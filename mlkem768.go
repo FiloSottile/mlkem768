@@ -11,15 +11,24 @@ const (
 	n = 256
 	q = 3329
 
-	encodingSize   = n * 12 / 8
-	ciphertextSize = 1088
-
 	// ML-KEM-768 parameters. The code makes assumptions based on these values,
 	// they can't be changed blindly.
 	k  = 3
 	η  = 2
 	du = 10
 	dv = 4
+
+	// encodingSizeX is the byte size of a ringElement or nttElement encoded by
+	// ByteEncode_X.
+	encodingSize12 = n * 12 / 8
+	encodingSize10 = n * 10 / 8
+	encodingSize4  = n * 4 / 8
+	encodingSize1  = n * 1 / 8
+
+	messageSize       = encodingSize1
+	decryptionKeySize = k * encodingSize12
+	encryptionKeySize = k*encodingSize12 + 32
+	ciphertextSize    = k*encodingSize10 + encodingSize4
 )
 
 // pkeKeyGen generates a key pair for the underlying PKE from a 32-byte random seed.
@@ -55,13 +64,13 @@ func pkeKeyGen(d []byte) (ek, dk []byte) {
 		}
 	}
 
-	ek = make([]byte, 0, k*encodingSize+len(ρ))
+	ek = make([]byte, 0, encryptionKeySize)
 	for i := range t {
 		ek = polyByteEncode(ek, t[i])
 	}
 	ek = append(ek, ρ...)
 
-	dk = make([]byte, 0, k*encodingSize)
+	dk = make([]byte, 0, decryptionKeySize)
 	for i := range s {
 		dk = polyByteEncode(dk, s[i])
 	}
@@ -74,18 +83,21 @@ func pkeKeyGen(d []byte) (ek, dk []byte) {
 //
 // It implements K-PKE.Encrypt according to FIPS 203 (DRAFT), Algorithm 13.
 func pkeEncrypt(ek, m, rnd []byte) ([]byte, error) {
-	if len(ek) != k*encodingSize+32 {
+	if len(ek) != encryptionKeySize {
 		return nil, errors.New("mlkem768: invalid encryption key length")
+	}
+	if len(m) != messageSize {
+		return nil, errors.New("mlkem768: invalid messages length")
 	}
 
 	t := make([]nttElement, k)
 	for i := range t {
 		var err error
-		t[i], err = polyByteDecode[nttElement](ek[:encodingSize])
+		t[i], err = polyByteDecode[nttElement](ek[:encodingSize12])
 		if err != nil {
 			return nil, err
 		}
-		ek = ek[encodingSize:]
+		ek = ek[encodingSize12:]
 	}
 	ρ := ek
 
@@ -142,7 +154,7 @@ func pkeEncrypt(ek, m, rnd []byte) ([]byte, error) {
 //
 // It implements K-PKE.Decrypt according to FIPS 203 (DRAFT), Algorithm 14.
 func pkeDecrypt(dk, c []byte) ([]byte, error) {
-	if len(dk) != k*encodingSize {
+	if len(dk) != decryptionKeySize {
 		return nil, errors.New("mlkem768: invalid decryption key length")
 	}
 	if len(c) != ciphertextSize {
@@ -151,12 +163,12 @@ func pkeDecrypt(dk, c []byte) ([]byte, error) {
 
 	u := make([]ringElement, k)
 	for i := range u {
-		f, err := ringDecodeAndDecompress10(c[:n/4*5])
+		f, err := ringDecodeAndDecompress10(c[:encodingSize10])
 		if err != nil {
 			return nil, err
 		}
 		u[i] = f
-		c = c[n/4*5:]
+		c = c[encodingSize10:]
 	}
 
 	v, err := ringDecodeAndDecompress4(c)
@@ -166,12 +178,12 @@ func pkeDecrypt(dk, c []byte) ([]byte, error) {
 
 	s := make([]nttElement, k)
 	for i := range s {
-		f, err := polyByteDecode[nttElement](dk[:encodingSize])
+		f, err := polyByteDecode[nttElement](dk[:encodingSize12])
 		if err != nil {
 			return nil, err
 		}
 		s[i] = f
-		dk = dk[encodingSize:]
+		dk = dk[encodingSize12:]
 	}
 
 	var v1NTT nttElement // s⊺ ◦ NTT(u)
@@ -278,7 +290,7 @@ func polySub[T ~[n]fieldElement](a, b T) T {
 //
 // It implements ByteEncode₁₂, according to FIPS 203 (DRAFT), Algorithm 4.
 func polyByteEncode[T ~[n]fieldElement](b []byte, f T) []byte {
-	out, B := sliceForAppend(b, encodingSize)
+	out, B := sliceForAppend(b, encodingSize12)
 	for i := 0; i < n; i += 2 {
 		x := uint32(f[i]) | uint32(f[i+1])<<12
 		B[0] = uint8(x)
@@ -293,7 +305,7 @@ func polyByteEncode[T ~[n]fieldElement](b []byte, f T) []byte {
 //
 // It implements ByteDecode₁₂, according to FIPS 203 (DRAFT), Algorithm 5.
 func polyByteDecode[T ~[n]fieldElement](b []byte) (T, error) {
-	if len(b) != encodingSize {
+	if len(b) != encodingSize12 {
 		return T{}, errors.New("mlkem768: invalid encoding length")
 	}
 	var f T
@@ -328,7 +340,7 @@ func sliceForAppend(in []byte, n int) (head, tail []byte) {
 // It implements Compress₁, according to FIPS 203 (DRAFT), Definition 4.5,
 // followed by ByteEncode₁, according to FIPS 203 (DRAFT), Algorithm 4.
 func ringCompressAndEncode1(s []byte, f ringElement) []byte {
-	s, b := sliceForAppend(s, n/8)
+	s, b := sliceForAppend(s, encodingSize1)
 	for i := range b {
 		b[i] = 0
 	}
@@ -344,7 +356,7 @@ func ringCompressAndEncode1(s []byte, f ringElement) []byte {
 // It implements ByteDecode₁, according to FIPS 203 (DRAFT), Algorithm 5,
 // followed by Decompress₁, according to FIPS 203 (DRAFT), Definition 4.6.
 func ringDecodeAndDecompress1(b []byte) (ringElement, error) {
-	if len(b) != 32 {
+	if len(b) != encodingSize1 {
 		return ringElement{}, errors.New("mlkem768: invalid message length")
 	}
 	var f ringElement
@@ -361,7 +373,7 @@ func ringDecodeAndDecompress1(b []byte) (ringElement, error) {
 // It implements Compress₄, according to FIPS 203 (DRAFT), Definition 4.5,
 // followed by ByteEncode₄, according to FIPS 203 (DRAFT), Algorithm 4.
 func ringCompressAndEncode4(s []byte, f ringElement) []byte {
-	s, b := sliceForAppend(s, n/2)
+	s, b := sliceForAppend(s, encodingSize4)
 	for i := 0; i < n; i += 2 {
 		b[i/2] = uint8(compress(f[i], 4) | compress(f[i+1], 4)<<4)
 	}
@@ -374,7 +386,7 @@ func ringCompressAndEncode4(s []byte, f ringElement) []byte {
 // It implements ByteDecode₄, according to FIPS 203 (DRAFT), Algorithm 5,
 // followed by Decompress₄, according to FIPS 203 (DRAFT), Definition 4.6.
 func ringDecodeAndDecompress4(b []byte) (ringElement, error) {
-	if len(b) != n/2 {
+	if len(b) != encodingSize4 {
 		return ringElement{}, errors.New("mlkem768: invalid encoding length")
 	}
 	var f ringElement
@@ -391,7 +403,7 @@ func ringDecodeAndDecompress4(b []byte) (ringElement, error) {
 // It implements Compress₁₀, according to FIPS 203 (DRAFT), Definition 4.5,
 // followed by ByteEncode₁₀, according to FIPS 203 (DRAFT), Algorithm 4.
 func ringCompressAndEncode10(s []byte, f ringElement) []byte {
-	s, b := sliceForAppend(s, n/4*5)
+	s, b := sliceForAppend(s, encodingSize10)
 	for i := 0; i < n; i += 4 {
 		var x uint64
 		x |= uint64(compress(f[i+0], 10))
@@ -414,7 +426,7 @@ func ringCompressAndEncode10(s []byte, f ringElement) []byte {
 // It implements ByteDecode₁₀, according to FIPS 203 (DRAFT), Algorithm 5,
 // followed by Decompress₁₀, according to FIPS 203 (DRAFT), Definition 4.6.
 func ringDecodeAndDecompress10(b []byte) (ringElement, error) {
-	if len(b) != n/4*5 {
+	if len(b) != encodingSize10 {
 		return ringElement{}, errors.New("mlkem768: invalid encoding length")
 	}
 	var f ringElement
