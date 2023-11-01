@@ -41,7 +41,10 @@ func pkeKeyGen(d []byte) (ek, dk []byte) {
 	A := make([]nttElement, k*k)
 	for i := byte(0); i < k; i++ {
 		for j := byte(0); j < k; j++ {
-			A[i*k+j] = sampleNTT(ρ, i, j) // TODO: this is the NIST typo flavor
+			// Note that this is consistent with Kyber round 3, rather than with
+			// the initial draft of FIPS 203, because NIST signaled that the
+			// change was involuntary and will be reverted.
+			A[i*k+j] = sampleNTT(ρ, j, i)
 		}
 	}
 
@@ -105,7 +108,7 @@ func pkeEncrypt(ek, m, rnd []byte) ([]byte, error) {
 	for i := byte(0); i < k; i++ {
 		for j := byte(0); j < k; j++ {
 			// Note that i and j are inverted, as we need the transposed of A.
-			AT[i*k+j] = sampleNTT(ρ, j, i) // TODO: this is the NIST typo flavor
+			AT[i*k+j] = sampleNTT(ρ, i, j)
 		}
 	}
 
