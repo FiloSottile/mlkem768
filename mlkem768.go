@@ -236,35 +236,54 @@ func fieldMul(a, b fieldElement) fieldElement {
 	return fieldReduce(x)
 }
 
-func compress(x fieldElement, bits uint8) uint16 {
-	// TODO refactor
-	shifted := uint32(x) << bits
-	product := uint64(shifted) * barrettMultiplier
-	quotient := uint32(product >> barrettShift)
-	remainder := shifted - quotient*q
+// compress maps a field element uniformly to the range 0 to 2ᵈ-1, according to
+// FIPS 203 (DRAFT), Definition 4.5.
+func compress(x fieldElement, d uint8) uint16 {
+	// We want to compute (x * 2ᵈ) / q, rounded to nearest integer, with 1/2
+	// rounding up (see FIPS 203 (DRAFT), Section 2.3).
 
-	// Adjust the quotient to round correctly:
-	//   0 <= remainder <= kHalfPrime round to 0
-	//   kHalfPrime < remainder <= kPrime + kHalfPrime round to 1
-	//   kPrime + kHalfPrime < remainder < 2 * kPrime round to 2
-	quotient += 1 & ((1664 - remainder) >> 31)
-	quotient += 1 & (((q + 1664) - remainder) >> 31)
-	return uint16(quotient & ((1 << bits) - 1))
+	// Barrett reduction produces a quotient and a remainder in the range [0, 2q),
+	// such that dividend = quotient * q + remainder.
+	dividend := uint32(x) << d // x * 2ᵈ
+	quotient := uint32(uint64(dividend) * barrettMultiplier >> barrettShift)
+	remainder := dividend - quotient*q
+
+	// Since the remainder is in the range [0, 2q), not [0, q), we need to
+	// portion it into three spans for rounding.
+	//
+	//     [ 0,       q/2     ) -> round to 0
+	//     [ q/2,     q + q/2 ) -> round to 1
+	//     [ q + q/2, 2q      ) -> round to 2
+	//
+	// We can convert that to the following logic: add 1 if remainder > q/2,
+	// then add 1 again if remainder > q + q/2.
+	//
+	// Note that if remainder > x, then ⌊x⌋ - remainder underflows, and the top
+	// bit of the difference will be set.
+	quotient += (q/2 - remainder) >> 31 & 1
+	quotient += (q + q/2 - remainder) >> 31 & 1
+
+	// quotient might have overflowed at this point, so reduce it by masking.
+	var mask uint32 = (1 << d) - 1
+	return uint16(quotient & mask)
 }
 
-func decompress(x uint16, bits uint8) fieldElement {
-	// TODO refactor
-	product := uint32(x) * q
-	power := uint32(1) << bits
-	// This is |product| % power, since |power| is a power of 2.
-	remainder := product & (power - 1)
-	// This is |product| / power, since |power| is a power of 2.
-	lower := product >> bits
-	// The rounding logic works since the first half of numbers mod |power| have a
-	// 0 as first bit, and the second half has a 1 as first bit, since |power| is
-	// a power of 2. As a 12 bit number, |remainder| is always positive, so we
-	// will shift in 0s for a right shift.
-	return fieldElement(lower + (remainder >> (bits - 1)))
+// decompress maps a number x between 0 and 2ᵈ-1 uniformly to the full range of
+// field elements, according to FIPS 203 (DRAFT), Definition 4.6.
+func decompress(y uint16, d uint8) fieldElement {
+	// We want to compute (y * q) / 2ᵈ, rounded to nearest integer, with 1/2
+	// rounding up (see FIPS 203 (DRAFT), Section 2.3).
+
+	dividend := uint32(y) * q
+	quotient := dividend >> d // (y * q) / 2ᵈ
+
+	// The d'th least-significant bit of the dividend (the most significant bit
+	// of the remainder) is 1 for the top half of the values that divide to the
+	// same quotient, which are the ones that round up.
+	quotient += dividend >> (d - 1) & 1
+
+	// quotient is at most (2¹¹-1) * q / 2¹¹ + 1 = 3328, so it didn't overflow.
+	return fieldElement(quotient)
 }
 
 // ringElement is a polynomial, an element of R_q, represented as an array

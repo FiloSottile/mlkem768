@@ -43,6 +43,28 @@ func TestFieldMul(t *testing.T) {
 	}
 }
 
+func TestDecompressCompress(t *testing.T) {
+	for _, bits := range []uint8{1, 4, 10} {
+		for a := uint16(0); a < 1<<bits; a++ {
+			f := decompress(a, bits)
+			if f >= q {
+				t.Fatalf("decompress(%d, %d) = %d >= q", a, bits, f)
+			}
+			got := compress(f, bits)
+			if got != a {
+				t.Fatalf("compress(decompress(%d, %d), %d) = %d", a, bits, bits, got)
+			}
+		}
+
+		for a := fieldElement(0); a < q; a++ {
+			c := compress(a, bits)
+			if c >= 1<<bits {
+				t.Fatalf("compress(%d, %d) = %d >= 2^bits", a, bits, c)
+			}
+		}
+	}
+}
+
 func BitRev7(n uint8) uint8 {
 	if n>>7 != 0 {
 		panic("not 7 bits")
@@ -62,9 +84,22 @@ func TestZetas(t *testing.T) {
 	ζ := big.NewInt(17)
 	q := big.NewInt(q)
 	for k, zeta := range zetas {
+		// ζ^BitRev7(k) mod q
 		exp := new(big.Int).Exp(ζ, big.NewInt(int64(BitRev7(uint8(k)))), q)
 		if big.NewInt(int64(zeta)).Cmp(exp) != 0 {
 			t.Errorf("zetas[%d] = %v, expected %v", k, zeta, exp)
+		}
+	}
+}
+
+func TestGammas(t *testing.T) {
+	ζ := big.NewInt(17)
+	q := big.NewInt(q)
+	for k, gamma := range gammas {
+		// ζ^2BitRev7(i)+1
+		exp := new(big.Int).Exp(ζ, big.NewInt(int64(BitRev7(uint8(k)))*2+1), q)
+		if big.NewInt(int64(gamma)).Cmp(exp) != 0 {
+			t.Errorf("gammas[%d] = %v, expected %v", k, gamma, exp)
 		}
 	}
 }
