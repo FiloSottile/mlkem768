@@ -1,6 +1,8 @@
 package mlkem768
 
 import (
+	"crypto/rand"
+	"crypto/subtle"
 	"errors"
 
 	"golang.org/x/crypto/sha3"
@@ -28,8 +30,44 @@ const (
 	messageSize       = encodingSize1
 	decryptionKeySize = k * encodingSize12
 	encryptionKeySize = k*encodingSize12 + 32
-	ciphertextSize    = k*encodingSize10 + encodingSize4
+
+	CiphertextSize       = k*encodingSize10 + encodingSize4
+	EncapsulationKeySize = encryptionKeySize
+	DecapsulationKeySize = decryptionKeySize + encryptionKeySize + 32 + 32
+	SharedKeySize        = 32
 )
+
+// GenerateKey generates an encapsulation key and a corresponding decapsulation
+// key, drawing random bytes from crypto/rand. If crypto/rand fails, GenerateKey
+// panics.
+//
+// The decapsulation key must be kept secret.
+func GenerateKey() (encapsulationKey, decapsulationKey []byte) {
+	d := make([]byte, 32)
+	if _, err := rand.Read(d); err != nil {
+		panic("mlkem768: crypto/rand Read failed: " + err.Error())
+	}
+	z := make([]byte, 32)
+	if _, err := rand.Read(z); err != nil {
+		panic("mlkem768: crypto/rand Read failed: " + err.Error())
+	}
+	return kemKeyGen(d, z)
+}
+
+// kemKeyGen generates an encapsulation key and a corresponding decapsulation key.
+//
+// It implements ML-KEM.KeyGen according to FIPS 203 (DRAFT), Algorithm 15.
+func kemKeyGen(d, z []byte) (ek, dk []byte) {
+	ekPKE, dkPKE := pkeKeyGen(d)
+	dk = make([]byte, 0, DecapsulationKeySize)
+	dk = append(dk, dkPKE...)
+	dk = append(dk, ekPKE...)
+	H := sha3.New256()
+	H.Write(ekPKE)
+	dk = H.Sum(dk)
+	dk = append(dk, z...)
+	return ekPKE, dk
+}
 
 // pkeKeyGen generates a key pair for the underlying PKE from a 32-byte random seed.
 //
@@ -79,6 +117,41 @@ func pkeKeyGen(d []byte) (ek, dk []byte) {
 	}
 
 	return ek, dk
+}
+
+// Encapsulate generates a shared key and an associated ciphertext from an
+// encapsulation key, drawing random bytes from crypto/rand. If crypto/rand
+// fails, Encapsulate panics. If the encapsulation key is not valid, Encapsulate
+// returns an error.
+//
+// The shared key must be kept secret.
+func Encapsulate(encapsulationKey []byte) (ciphertext, sharedKey []byte, err error) {
+	if len(encapsulationKey) != EncapsulationKeySize {
+		return nil, nil, errors.New("mlkem768: invalid encapsulation key length")
+	}
+	m := make([]byte, messageSize)
+	if _, err := rand.Read(m); err != nil {
+		panic("mlkem768: crypto/rand Read failed: " + err.Error())
+	}
+	ciphertext, sharedKey, err = kemEncaps(encapsulationKey, m)
+	if err != nil {
+		return nil, nil, err
+	}
+	return ciphertext, sharedKey, nil
+}
+
+// kemEncaps generates a shared key and an associated ciphertext.
+//
+// It implements ML-KEM.Encaps according to FIPS 203 (DRAFT), Algorithm 16.
+func kemEncaps(ek, m []byte) (c, K []byte, err error) {
+	H := sha3.Sum256(ek)
+	g := sha3.New512()
+	g.Write(m)
+	g.Write(H[:])
+	G := g.Sum(nil)
+	K, r := G[:32], G[32:]
+	c, err = pkeEncrypt(ek, m, r)
+	return c, K, err
 }
 
 // pkeEncrypt encrypt a plaintext message. It expects ek (the encryption key) to
@@ -143,13 +216,60 @@ func pkeEncrypt(ek, m, rnd []byte) ([]byte, error) {
 	}
 	v := polyAdd(polyAdd(inverseNTT(vNTT), e2), μ)
 
-	c := make([]byte, 0, ciphertextSize)
+	c := make([]byte, 0, CiphertextSize)
 	for _, f := range u {
 		c = ringCompressAndEncode10(c, f)
 	}
 	c = ringCompressAndEncode4(c, v)
 
 	return c, nil
+}
+
+// Decapsulate generates a shared key from a ciphertext and a decapsulation key.
+// If the decapsulation key or the ciphertext are not valid, Decapsulate returns
+// an error.
+//
+// The shared key must be kept secret.
+func Decapsulate(decapsulationKey, ciphertext []byte) (sharedKey []byte, err error) {
+	if len(decapsulationKey) != DecapsulationKeySize {
+		return nil, errors.New("mlkem768: invalid decapsulation key length")
+	}
+	if len(ciphertext) != CiphertextSize {
+		return nil, errors.New("mlkem768: invalid ciphertext length")
+	}
+	return kemDecaps(decapsulationKey, ciphertext)
+}
+
+// kemDecaps produces a shared key from a ciphertext.
+//
+// It implements ML-KEM.Decaps according to FIPS 203 (DRAFT), Algorithm 17.
+func kemDecaps(dk, c []byte) (K []byte, err error) {
+	dkPKE := dk[:decryptionKeySize]
+	ekPKE := dk[decryptionKeySize : decryptionKeySize+encryptionKeySize]
+	h := dk[decryptionKeySize+encryptionKeySize : decryptionKeySize+encryptionKeySize+32]
+	z := dk[decryptionKeySize+encryptionKeySize+32:]
+
+	m, err := pkeDecrypt(dkPKE, c)
+	if err != nil {
+		return nil, err
+	}
+	g := sha3.New512()
+	g.Write(m)
+	g.Write(h)
+	G := g.Sum(nil)
+	Kprime, r := G[:32], G[32:]
+	J := sha3.NewShake256()
+	J.Write(z)
+	J.Write(c)
+	Kout := make([]byte, 32)
+	J.Read(Kout)
+	c1, err := pkeEncrypt(ekPKE, m, r)
+	if err != nil {
+		return nil, err
+	}
+
+	subtle.ConstantTimeCopy(subtle.ConstantTimeCompare(c, c1), Kout, Kprime)
+	return Kout, err
 }
 
 // pkeDecrypt decrypts a ciphertext. It expects dk (the decryption key) to
@@ -160,7 +280,7 @@ func pkeDecrypt(dk, c []byte) ([]byte, error) {
 	if len(dk) != decryptionKeySize {
 		return nil, errors.New("mlkem768: invalid decryption key length")
 	}
-	if len(c) != ciphertextSize {
+	if len(c) != CiphertextSize {
 		return nil, errors.New("mlkem768: invalid ciphertext length")
 	}
 
@@ -200,6 +320,14 @@ func pkeDecrypt(dk, c []byte) ([]byte, error) {
 
 // fieldElement is an integer modulo q, an element of ℤ_q. It is always reduced.
 type fieldElement uint16
+
+// fieldCheckReduced checks that a value a is < q.
+func fieldCheckReduced(a uint16) (fieldElement, error) {
+	if a >= q {
+		return 0, errors.New("unreduced field element")
+	}
+	return fieldElement(a), nil
+}
 
 // fieldReduceOnce reduces a value a < 2q.
 func fieldReduceOnce(a uint16) fieldElement {
@@ -323,7 +451,12 @@ func polyByteEncode[T ~[n]fieldElement](b []byte, f T) []byte {
 	return out
 }
 
-// polyByteDecode decodes the 384-byte encoding of a polynomial.
+// polyByteDecode decodes the 384-byte encoding of a polynomial, checking that
+// all the coefficients are properly reduced. This achieves the "Modulus check"
+// step of ML-KEM Encapsulation Input Validation.
+//
+// polyByteDecode is also used in ML-KEM Decapsulation, where the input
+// validation is not required, but implicitly allowed by the specification.
 //
 // It implements ByteDecode₁₂, according to FIPS 203 (DRAFT), Algorithm 5.
 func polyByteDecode[T ~[n]fieldElement](b []byte) (T, error) {
@@ -334,8 +467,13 @@ func polyByteDecode[T ~[n]fieldElement](b []byte) (T, error) {
 	for i := 0; i < n; i += 2 {
 		d := uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16
 		const mask12 = 0b1111_1111_1111
-		f[i] = fieldReduceOnce(uint16(d & mask12))
-		f[i+1] = fieldReduceOnce(uint16(d >> 12))
+		var err error
+		if f[i], err = fieldCheckReduced(uint16(d & mask12)); err != nil {
+			return T{}, errors.New("mlkem768: invalid polynomial encoding")
+		}
+		if f[i+1], err = fieldCheckReduced(uint16(d >> 12)); err != nil {
+			return T{}, errors.New("mlkem768: invalid polynomial encoding")
+		}
 		b = b[3:]
 	}
 	return f, nil
