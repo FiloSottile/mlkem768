@@ -2,6 +2,7 @@ package mlkem768
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/hex"
 	"math/big"
 	"testing"
@@ -164,10 +165,81 @@ func TestPKEDecryptVector(t *testing.T) {
 	}
 }
 
-var sink fieldElement
+var sinkElement fieldElement
 
 func BenchmarkSampleNTT(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		sink ^= sampleNTT(bytes.Repeat([]byte("A"), 32), '4', '2')[0]
+		sinkElement ^= sampleNTT(bytes.Repeat([]byte("A"), 32), '4', '2')[0]
+	}
+}
+
+var sink byte
+
+func BenchmarkKeyGen(b *testing.B) {
+	d := make([]byte, 32)
+	rand.Read(d)
+	z := make([]byte, 32)
+	rand.Read(z)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ek, dk := kemKeyGen(d, z)
+		sink ^= ek[0] ^ dk[0]
+	}
+}
+
+func BenchmarkEncaps(b *testing.B) {
+	d := make([]byte, 32)
+	rand.Read(d)
+	z := make([]byte, 32)
+	rand.Read(z)
+	m := make([]byte, 32)
+	rand.Read(m)
+	ek, _ := kemKeyGen(d, z)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		c, K, err := kemEncaps(ek, m)
+		if err != nil {
+			b.Fatal(err)
+		}
+		sink ^= c[0] ^ K[0]
+	}
+}
+
+func BenchmarkDecaps(b *testing.B) {
+	d := make([]byte, 32)
+	rand.Read(d)
+	z := make([]byte, 32)
+	rand.Read(z)
+	m := make([]byte, 32)
+	rand.Read(m)
+	ek, dk := kemKeyGen(d, z)
+	c, _, err := kemEncaps(ek, m)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		K, err := kemDecaps(dk, c)
+		if err != nil {
+			b.Fatal(err)
+		}
+		sink ^= K[0]
+	}
+}
+
+func BenchmarkRoundTrip(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		ek, dk := GenerateKey()
+		c, Ke, err := Encapsulate(ek)
+		if err != nil {
+			b.Fatal(err)
+		}
+		Kd, err := Decapsulate(dk, c)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if !bytes.Equal(Ke, Kd) {
+			b.Fail()
+		}
 	}
 }
