@@ -30,6 +30,7 @@ package mlkem768
 import (
 	"crypto/rand"
 	"crypto/subtle"
+	"encoding/binary"
 	"errors"
 
 	"golang.org/x/crypto/sha3"
@@ -747,11 +748,22 @@ func sampleNTT(rho []byte, ii, jj byte) nttElement {
 	// most-significant bits.
 
 	var a nttElement
-	var b [3]byte
-	var j int
+	var j int        // index into a
+	var b [4]byte    // reusable little-endian type-punned uint32
+	var buf [24]byte // buffered reads from B
+	off := len(buf)  // index into buf, starts in a "buffer fully consumed" state
 	for {
-		B.Read(b[:])
-		d := uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16
+		if off >= len(buf) {
+			// out of bytes, refill
+			B.Read(buf[:])
+			off = 0
+		}
+		_ = buf[off+2] // bounds check elimination hint
+		b[0] = buf[off]
+		b[1] = buf[off+1]
+		b[2] = buf[off+2]
+		off += 3
+		d := binary.LittleEndian.Uint32(b[:])
 		const mask12 = 0b1111_1111_1111
 		if d1 := d & mask12; d1 < q {
 			a[j] = fieldElement(d1)
