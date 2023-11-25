@@ -447,8 +447,7 @@ func decompress(y uint16, d uint8) fieldElement {
 type ringElement [n]fieldElement
 
 // polyAdd adds two ringElements or nttElements.
-func polyAdd[T ~[n]fieldElement](a, b T) T {
-	var s T
+func polyAdd[T ~[n]fieldElement](a, b T) (s T) {
 	for i := range s {
 		s[i] = fieldAdd(a[i], b[i])
 	}
@@ -456,8 +455,7 @@ func polyAdd[T ~[n]fieldElement](a, b T) T {
 }
 
 // polySub subtracts two ringElements or nttElements.
-func polySub[T ~[n]fieldElement](a, b T) T {
-	var s T
+func polySub[T ~[n]fieldElement](a, b T) (s T) {
 	for i := range s {
 		s[i] = fieldSub(a[i], b[i])
 	}
