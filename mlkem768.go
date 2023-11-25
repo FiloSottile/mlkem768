@@ -31,6 +31,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"errors"
+	"math/bits"
 
 	"golang.org/x/crypto/sha3"
 )
@@ -677,16 +678,15 @@ var zetas = [128]fieldElement{1, 1729, 2580, 3289, 2642, 630, 1897, 848, 1062, 1
 //
 // It implements NTT, according to FIPS 203 (DRAFT), Algorithm 8.
 func ntt(f ringElement) nttElement {
-	k := 1
-	for len := 128; len >= 2; len /= 2 {
-		for start := 0; start < 256; start += 2 * len {
-			zeta := zetas[k]
-			k++
-			for j := start; j < start+len; j++ {
-				t := fieldMul(zeta, f[j+len])
-				f[j+len] = fieldSub(f[j], t)
-				f[j] = fieldAdd(f[j], t)
-			}
+	for k := 1; k < 128; k++ {
+		bl := bits.Len(uint(k))
+		len := 256 >> bl
+		start := (k - 1<<(bl-1)) << (9 - bl)
+		zeta := zetas[k]
+		for j := start; j < start+len; j++ {
+			t := fieldMul(zeta, f[j+len])
+			f[j+len] = fieldSub(f[j], t)
+			f[j] = fieldAdd(f[j], t)
 		}
 	}
 	return nttElement(f)
@@ -696,16 +696,15 @@ func ntt(f ringElement) nttElement {
 //
 // It implements NTT⁻¹, according to FIPS 203 (DRAFT), Algorithm 9.
 func inverseNTT(f nttElement) ringElement {
-	k := 127
-	for len := 2; len <= 128; len *= 2 {
-		for start := 0; start < 256; start += 2 * len {
-			zeta := zetas[k]
-			k--
-			for j := start; j < start+len; j++ {
-				t := f[j]
-				f[j] = fieldAdd(t, f[j+len])
-				f[j+len] = fieldMul(zeta, fieldSub(f[j+len], t))
-			}
+	for k := 127; k >= 1; k-- {
+		bl := bits.Len(uint(k))
+		len := 256 >> bl
+		start := (1<<bl - k - 1) << (9 - bl)
+		zeta := zetas[k]
+		for j := start; j < start+len; j++ {
+			t := f[j]
+			f[j] = fieldAdd(t, f[j+len])
+			f[j+len] = fieldMul(zeta, fieldSub(f[j+len], t))
 		}
 	}
 	for i := range f {
