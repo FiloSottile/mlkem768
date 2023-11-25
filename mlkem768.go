@@ -684,10 +684,18 @@ func ntt(f ringElement) nttElement {
 		for start := 0; start < 256; start += 2 * len {
 			zeta := zetas[k]
 			k++
-			for j := start; j < start+len; j++ {
-				t := fieldMul(zeta, f[j+len])
-				f[j+len] = fieldSub(f[j], t)
-				f[j] = fieldAdd(f[j], t)
+			for j := start; j < start+len; j += 2 {
+				// Loop 2x unrolled for performance.
+				{
+					t := fieldMul(zeta, f[j+len])
+					f[j+len] = fieldSub(f[j], t)
+					f[j] = fieldAdd(f[j], t)
+				}
+				{
+					t := fieldMul(zeta, f[j+1+len])
+					f[j+1+len] = fieldSub(f[j+1], t)
+					f[j+1] = fieldAdd(f[j+1], t)
+				}
 			}
 		}
 	}
@@ -703,10 +711,18 @@ func inverseNTT(f nttElement) ringElement {
 		for start := 0; start < 256; start += 2 * len {
 			zeta := zetas[k]
 			k--
-			for j := start; j < start+len; j++ {
-				t := f[j]
-				f[j] = fieldAdd(t, f[j+len])
-				f[j+len] = fieldMul(zeta, fieldSub(f[j+len], t))
+			for j := start; j < start+len; j += 2 {
+				// Loop 2x unrolled for performance.
+				{
+					t := f[j]
+					f[j] = fieldAdd(t, f[j+len])
+					f[j+len] = fieldMul(zeta, fieldSub(f[j+len], t))
+				}
+				{
+					t := f[j+1]
+					f[j+1] = fieldAdd(t, f[j+1+len])
+					f[j+1+len] = fieldMul(zeta, fieldSub(f[j+1+len], t))
+				}
 			}
 		}
 	}
