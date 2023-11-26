@@ -763,7 +763,6 @@ func sampleNTT(rho []byte, ii, jj byte) nttElement {
 
 	var a nttElement
 	var j int        // index into a
-	var b [4]byte    // reusable little-endian type-punned uint32
 	var buf [24]byte // buffered reads from B
 	off := len(buf)  // index into buf, starts in a "buffer fully consumed" state
 	for {
@@ -772,21 +771,19 @@ func sampleNTT(rho []byte, ii, jj byte) nttElement {
 			B.Read(buf[:])
 			off = 0
 		}
-		_ = buf[off+2] // bounds check elimination hint
-		b[0] = buf[off]
-		b[1] = buf[off+1]
-		b[2] = buf[off+2]
+		d1 := binary.LittleEndian.Uint16(buf[off:])
+		d1 = d1 << 4 >> 4
+		d2 := binary.LittleEndian.Uint16(buf[off+1:])
+		d2 = d2 >> 4
 		off += 3
-		d := binary.LittleEndian.Uint32(b[:])
-		const mask12 = 0b1111_1111_1111
-		if d1 := d & mask12; d1 < q {
+		if d1 < q {
 			a[j] = fieldElement(d1)
 			j++
 		}
 		if j >= len(a) {
 			break
 		}
-		if d2 := d >> 12; d2 < q {
+		if d2 < q {
 			a[j] = fieldElement(d2)
 			j++
 		}
