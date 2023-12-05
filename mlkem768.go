@@ -745,21 +745,24 @@ func sampleNTT(rho []byte, ii, jj byte) nttElement {
 	// values. (The rejection rate is approximately 19%.)
 	//
 	// To do this from a bytes stream, it draws three bytes at a time, and
-	// splits the second one between the high-order bits of the first value and
-	// the low-order bits of the second values.
+	// splits them into two uint16 appropriately masked.
 	//
 	//               r₀              r₁              r₂
 	//       |- - - - - - - -|- - - - - - - -|- - - - - - - -|
 	//
-	//                   d₁                      d₂
-	//       |- - - - - - - - - - - -|- - - - - - - - - - - -|
+	//               Uint16(r₀ || r₁)
+	//       |- - - - - - - - - - - - - - - -|
+	//       |- - - - - - - - - - - -|
+	//                   d₁
 	//
-	//                         r₁%16   r₁>>4
-	//                       |- - - -|- - - -|
+	//                                Uint16(r₁ || r₂)
+	//                       |- - - - - - - - - - - - - - - -|
+	//                               |- - - - - - - - - - - -|
+	//                                           d₂
 	//
-	// Note that in little-endian, a modulo operation keeps the "leftmost"
-	// least-significant bits, while a right-shift keeps the "rightmost"
-	// most-significant bits.
+	// Note that in little-endian, the rightmost bits are the most significant
+	// bits (dropped with a mask) and the leftmost bits are the least
+	// significant bits (dropped with a right shift).
 
 	var a nttElement
 	var j int        // index into a
@@ -767,14 +770,11 @@ func sampleNTT(rho []byte, ii, jj byte) nttElement {
 	off := len(buf)  // index into buf, starts in a "buffer fully consumed" state
 	for {
 		if off >= len(buf) {
-			// out of bytes, refill
 			B.Read(buf[:])
 			off = 0
 		}
-		d1 := binary.LittleEndian.Uint16(buf[off:])
-		d1 = d1 << 4 >> 4
-		d2 := binary.LittleEndian.Uint16(buf[off+1:])
-		d2 = d2 >> 4
+		d1 := binary.LittleEndian.Uint16(buf[off:]) & 0b1111_1111_1111
+		d2 := binary.LittleEndian.Uint16(buf[off+1:]) >> 4
 		off += 3
 		if d1 < q {
 			a[j] = fieldElement(d1)
