@@ -297,7 +297,7 @@ func kemDecaps(dk, c []byte) (K []byte, err error) {
 	}
 
 	subtle.ConstantTimeCopy(subtle.ConstantTimeCompare(c, c1), Kout, Kprime)
-	return Kout, err
+	return Kout, nil
 }
 
 // pkeDecrypt decrypts a ciphertext. It expects dk (the decryption key) to
