@@ -332,6 +332,44 @@ func TestPQCKATVector(t *testing.T) {
 	}
 }
 
+func TestUnluckyVector(t *testing.T) {
+	d := vector("unlucky", "d")
+	z := vector("unlucky", "z")
+	ekExp := vector("unlucky", "pk")
+	dkExp := vector("unlucky", "sk")
+
+	ek, dk := kemKeyGen(d, z)
+	if !bytes.Equal(ek, ekExp) {
+		t.Errorf("ek: got %x, expected %x", ek, ekExp)
+	}
+	if !bytes.Equal(dk, dkExp) {
+		t.Errorf("dk: got %x, expected %x", dk, dkExp)
+	}
+
+	msg := vector("unlucky", "msg")
+	ctExp := vector("unlucky", "ct")
+	kExp := vector("unlucky", "ss")
+
+	ct, k, err := kemEncaps(ek, msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(ct, ctExp) {
+		t.Errorf("ct: got %x, expected %x", ct, ctExp)
+	}
+	if !bytes.Equal(k, kExp) {
+		t.Errorf("k (encaps): got %x, expected %x", k, kExp)
+	}
+
+	k, err = Decapsulate(dk, ct)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(k, kExp) {
+		t.Errorf("k (decaps): got %x, expected %x", k, kExp)
+	}
+}
+
 var sinkElement fieldElement
 
 func BenchmarkSampleNTT(b *testing.B) {
