@@ -15,6 +15,7 @@ import (
 	"flag"
 	"math/big"
 	"os"
+	"strings"
 	"testing"
 
 	"golang.org/x/crypto/sha3"
@@ -482,11 +483,11 @@ func TestStrcmpVector(t *testing.T) {
 }
 
 func TestNegativeEncaps(t *testing.T) {
-	gzipBytes, err := os.ReadFile("testdata/negative.txt.gz")
+	gzipFile, err := os.Open("testdata/negative.txt.gz")
 	if err != nil {
 		t.Fatal(err)
 	}
-	gzipReader, err := gzip.NewReader(bytes.NewReader(gzipBytes))
+	gzipReader, err := gzip.NewReader(gzipFile)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -499,6 +500,145 @@ func TestNegativeEncaps(t *testing.T) {
 		}
 		if _, _, err := Encapsulate(ek); err == nil {
 			t.Errorf("expected error for %s", line)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWycheproofDecaps(t *testing.T) {
+	// https://groups.google.com/a/list.nist.gov/g/pqc-forum/c/aCAX-2QrUFw/m/hy5gwcESAAAJ
+	gzipFile, err := os.Open("testdata/decaps768draft.gz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gzipReader, err := gzip.NewReader(gzipFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var comment string
+	var dk, ct, kExp []byte
+	var expErr bool
+	scanner := bufio.NewScanner(gzipReader)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			ss, err := Decapsulate(dk, ct)
+			if err != nil && !expErr {
+				t.Errorf("unexpected error for %s: %v", comment, err)
+			}
+			if err == nil && expErr {
+				t.Errorf("expected error for %s", comment)
+			}
+			if err == nil && !bytes.Equal(ss, kExp) {
+				t.Errorf("k: got %x, expected %x", ss, kExp)
+			}
+			continue
+		}
+
+		key, value, _ := strings.Cut(line, " = ")
+		switch key {
+		case "comment":
+			comment = value
+		case "private_key":
+			dk, err = hex.DecodeString(value)
+		case "ciphertext":
+			ct, err = hex.DecodeString(value)
+		case "expected_shared_secret":
+			if value != "" {
+				kExp, err = hex.DecodeString(value)
+			} else {
+				kExp = nil
+			}
+		case "expected_result":
+			switch value {
+			case "pass":
+				expErr = false
+			case "fail":
+				expErr = true
+			default:
+				t.Fatalf("unknown expected_result %q", value)
+			}
+		default:
+			t.Fatalf("unknown key %q", key)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWycheproofEncaps(t *testing.T) {
+	// https://groups.google.com/a/list.nist.gov/g/pqc-forum/c/aCAX-2QrUFw/m/hy5gwcESAAAJ
+	gzipFile, err := os.Open("testdata/encaps768draft.gz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gzipReader, err := gzip.NewReader(gzipFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var comment string
+	var ek, m, ctExp, kExp []byte
+	var expErr bool
+	scanner := bufio.NewScanner(gzipReader)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			ct, k, err := kemEncaps(ek, m)
+			if err != nil && !expErr {
+				t.Errorf("unexpected error for %s: %v", comment, err)
+			}
+			if err == nil && expErr {
+				t.Errorf("expected error for %s", comment)
+			}
+			if err == nil && !bytes.Equal(ct, ctExp) {
+				t.Errorf("ct for %s: got %x, expected %x", comment, ct, ctExp)
+			}
+			if err == nil && !bytes.Equal(k, kExp) {
+				t.Errorf("k for %s: got %x, expected %x", comment, k, kExp)
+			}
+			continue
+		}
+
+		key, value, _ := strings.Cut(line, " = ")
+		switch key {
+		case "comment":
+			comment = value
+		case "public_key":
+			ek, err = hex.DecodeString(value)
+		case "entropy":
+			m, err = hex.DecodeString(value)
+		case "expected_shared_secret":
+			if value != "" {
+				kExp, err = hex.DecodeString(value)
+			} else {
+				kExp = nil
+			}
+		case "expected_ciphertext":
+			if value != "" {
+				ctExp, err = hex.DecodeString(value)
+			} else {
+				ctExp = nil
+			}
+		case "expected_result":
+			switch value {
+			case "pass":
+				expErr = false
+			case "fail":
+				expErr = true
+			default:
+				t.Fatalf("unknown expected_result %q", value)
+			}
+		default:
+			t.Fatalf("unknown key %q", key)
+		}
+		if err != nil {
+			t.Fatal(err)
 		}
 	}
 	if err := scanner.Err(); err != nil {
