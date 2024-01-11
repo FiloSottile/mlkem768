@@ -44,13 +44,13 @@ func GenerateKey() (encapsulationKey, decapsulationKey []byte, err error) {
 	return append(pkM, pkX...), append(skM, skX...), nil
 }
 
-const XWingLabel = (`` +
+const xwingLabel = (`` +
 	`\./` +
 	`/^\`)
 
 func combiner(ssM, ssX, ctX, pkX []byte) []byte {
 	h := sha3.New256()
-	h.Write([]byte(XWingLabel))
+	h.Write([]byte(xwingLabel))
 	h.Write(ssM)
 	h.Write(ssX)
 	h.Write(ctX)
