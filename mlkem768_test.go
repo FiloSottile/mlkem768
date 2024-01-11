@@ -119,7 +119,10 @@ func TestGammas(t *testing.T) {
 }
 
 func TestRoundTrip(t *testing.T) {
-	ek, dk := GenerateKey()
+	ek, dk, err := GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
 	c, Ke, err := Encapsulate(ek)
 	if err != nil {
 		t.Fatal(err)
@@ -132,7 +135,10 @@ func TestRoundTrip(t *testing.T) {
 		t.Fail()
 	}
 
-	ek1, dk1 := GenerateKey()
+	ek1, dk1, err := GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if bytes.Equal(ek, ek1) {
 		t.Fail()
 	}
@@ -156,7 +162,10 @@ func TestRoundTrip(t *testing.T) {
 }
 
 func TestBadLengths(t *testing.T) {
-	ek, dk := GenerateKey()
+	ek, dk, err := GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	for i := 0; i < len(ek)-1; i++ {
 		if _, _, err := Encapsulate(ek[:i]); err == nil {
@@ -710,7 +719,10 @@ func BenchmarkDecaps(b *testing.B) {
 
 func BenchmarkRoundTrip(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		ek, dk := GenerateKey()
+		ek, dk, err := GenerateKey()
+		if err != nil {
+			b.Fatal(err)
+		}
 		c, Ke, err := Encapsulate(ek)
 		if err != nil {
 			b.Fatal(err)

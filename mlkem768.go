@@ -66,20 +66,20 @@ const (
 )
 
 // GenerateKey generates an encapsulation key and a corresponding decapsulation
-// key, drawing random bytes from crypto/rand. If crypto/rand fails, GenerateKey
-// panics.
+// key, drawing random bytes from crypto/rand.
 //
 // The decapsulation key must be kept secret.
-func GenerateKey() (encapsulationKey, decapsulationKey []byte) {
+func GenerateKey() (encapsulationKey, decapsulationKey []byte, err error) {
 	d := make([]byte, 32)
 	if _, err := rand.Read(d); err != nil {
-		panic("mlkem768: crypto/rand Read failed: " + err.Error())
+		return nil, nil, errors.New("mlkem768: crypto/rand Read failed: " + err.Error())
 	}
 	z := make([]byte, 32)
 	if _, err := rand.Read(z); err != nil {
-		panic("mlkem768: crypto/rand Read failed: " + err.Error())
+		return nil, nil, errors.New("mlkem768: crypto/rand Read failed: " + err.Error())
 	}
-	return kemKeyGen(d, z)
+	ek, dk := kemKeyGen(d, z)
+	return ek, dk, nil
 }
 
 // kemKeyGen generates an encapsulation key and a corresponding decapsulation key.
@@ -148,9 +148,8 @@ func pkeKeyGen(d []byte) (ek, dk []byte) {
 }
 
 // Encapsulate generates a shared key and an associated ciphertext from an
-// encapsulation key, drawing random bytes from crypto/rand. If crypto/rand
-// fails, Encapsulate panics. If the encapsulation key is not valid, Encapsulate
-// returns an error.
+// encapsulation key, drawing random bytes from crypto/rand.
+// If the encapsulation key is not valid, Encapsulate returns an error.
 //
 // The shared key must be kept secret.
 func Encapsulate(encapsulationKey []byte) (ciphertext, sharedKey []byte, err error) {
@@ -159,7 +158,7 @@ func Encapsulate(encapsulationKey []byte) (ciphertext, sharedKey []byte, err err
 	}
 	m := make([]byte, messageSize)
 	if _, err := rand.Read(m); err != nil {
-		panic("mlkem768: crypto/rand Read failed: " + err.Error())
+		return nil, nil, errors.New("mlkem768: crypto/rand Read failed: " + err.Error())
 	}
 	ciphertext, sharedKey, err = kemEncaps(encapsulationKey, m)
 	if err != nil {
