@@ -399,24 +399,24 @@ func compress(x fieldElement, d uint8) uint16 {
 
 	// Barrett reduction produces a quotient and a remainder in the range [0, 2q),
 	// such that dividend = quotient * q + remainder.
-	dividend := uint32(x) << d // x * 2ᵈ
+	// It's easier to implement floored division, so we'll pre-add q/2 to the
+	// dividend so that the overall behaviour is round-to-nearest.
+	dividend := (uint32(x) << d) + q/2 // x * 2ᵈ + q/2
 	quotient := uint32(uint64(dividend) * barrettMultiplier >> barrettShift)
 	remainder := dividend - quotient*q
 
 	// Since the remainder is in the range [0, 2q), not [0, q), we need to
-	// portion it into three spans for rounding.
+	// portion it into two spans for rounding.
 	//
-	//     [ 0,       q/2     ) -> round to 0
-	//     [ q/2,     q + q/2 ) -> round to 1
-	//     [ q + q/2, 2q      ) -> round to 2
+	//     [0, q ) -> round to 0
+	//     [q, 2q) -> round to 1
 	//
-	// We can convert that to the following logic: add 1 if remainder > q/2,
-	// then add 1 again if remainder > q + q/2.
+	// We can convert that to the following logic: add 1 if remainder >= q.
+	// Or, equivalently, add 1 if remainder > (q - 1).
 	//
 	// Note that if remainder > x, then ⌊x⌋ - remainder underflows, and the top
 	// bit of the difference will be set.
-	quotient += (q/2 - remainder) >> 31 & 1
-	quotient += (q + q/2 - remainder) >> 31 & 1
+	quotient += ((q - 1) - remainder) >> 31 & 1
 
 	// quotient might have overflowed at this point, so reduce it by masking.
 	var mask uint32 = (1 << d) - 1
