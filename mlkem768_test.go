@@ -81,7 +81,7 @@ func TestDecompressCompress(t *testing.T) {
 }
 
 func CompressRat(x, d int64) int64 {
-	if (x < 0) || (x > q) {
+	if (x < 0) || (x >= q) {
 		panic("x out of range")
 	}
 	if (d <= 0) || (d >= 12) {
@@ -114,7 +114,7 @@ func TestCompress(t *testing.T) {
 }
 
 func DeompressRat(y, d int64) int64 {
-	if (y < 0) || (y > (1 << d)) {
+	if (y < 0) || (y >= (1 << d)) {
 		panic("y out of range")
 	}
 	if (d <= 0) || (d >= 12) {
