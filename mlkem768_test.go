@@ -216,8 +216,20 @@ func TestBadLengths(t *testing.T) {
 var vectorsJSON []byte
 var vectors map[string]map[string]string
 
+type compvecs struct {
+	Compress   [][]int `json:"compress"`
+	Decompress [][]int `json:"decompress"`
+}
+
+//go:embed testdata/compression.json
+var compressionvectorsJSON []byte
+var compressionvectors compvecs
+
 func init() {
 	if err := json.Unmarshal(vectorsJSON, &vectors); err != nil {
+		panic(err)
+	}
+	if err := json.Unmarshal(compressionvectorsJSON, &compressionvectors); err != nil {
 		panic(err)
 	}
 }
@@ -652,6 +664,30 @@ func TestWycheproofEncaps(t *testing.T) {
 	}
 	if err := scanner.Err(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCompress(t *testing.T) {
+	for d := 1; d < 12; d++ {
+		for n := 0; n < q; n++ {
+			expected := compressionvectors.Compress[d][n]
+			result := int(compress(fieldElement(n), uint8(d)))
+			if result != expected {
+				t.Errorf("compress(%d, %d): got %d, expected %d", n, d, result, expected)
+			}
+		}
+	}
+}
+
+func TestDecompress(t *testing.T) {
+	for d := 1; d < 12; d++ {
+		for n := 0; n < (1<<d); n++ {
+			expected := compressionvectors.Decompress[d][n]
+			result := int(decompress(uint16(n), uint8(d)))
+			if result != expected {
+				t.Errorf("decompress(%d, %d): got %d, expected %d", n, d, result, expected)
+			}
+		}
 	}
 }
 
