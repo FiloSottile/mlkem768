@@ -429,13 +429,11 @@ func decompress(y uint16, d uint8) fieldElement {
 	// We want to compute (y * q) / 2ᵈ, rounded to nearest integer, with 1/2
 	// rounding up (see FIPS 203 (DRAFT), Section 2.3).
 
-	dividend := uint32(y) * q
-	quotient := dividend >> d // (y * q) / 2ᵈ
-
-	// The d'th least-significant bit of the dividend (the most significant bit
-	// of the remainder) is 1 for the top half of the values that divide to the
-	// same quotient, which are the ones that round up.
-	quotient += dividend >> (d - 1) & 1
+	// Similarly to in compress(), we achieve round-to-nearest by adding
+	// half the divisor to the dividend
+	// i.e. ⌈ (y * q) / 2ᵈ ⌋ == ⌊(y * q + 2ᵈ / 2) / 2ᵈ⌋
+	dividend := uint32(y) * q + (1 << (d - 1))
+	quotient := dividend >> d
 
 	// quotient is at most (2¹¹-1) * q / 2¹¹ + 1 = 3328, so it didn't overflow.
 	return fieldElement(quotient)
