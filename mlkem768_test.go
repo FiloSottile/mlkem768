@@ -15,6 +15,7 @@ import (
 	"flag"
 	"math/big"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -74,6 +75,72 @@ func TestDecompressCompress(t *testing.T) {
 			c := compress(a, bits)
 			if c >= 1<<bits {
 				t.Fatalf("compress(%d, %d) = %d >= 2^bits", a, bits, c)
+			}
+		}
+	}
+}
+
+func CompressRat(x, d int64) int64 {
+	if (x < 0) || (x > q) {
+		panic("x out of range")
+	}
+	if (d <= 0) || (d >= 12) {
+		panic("d out of range")
+	}
+
+	precise := big.NewRat((1<<d)*x, q) // (2ᵈ / q) * x == (2ᵈ * x) / q
+
+	// FloatString rounds halves away from 0, and our result should always be positive,
+	// so it should work as we expect.
+	// (There's no direct way to convert a Rat to an integer)
+	rounded, err := strconv.ParseInt(precise.FloatString(0), 10, 64)
+	if err != nil {
+		panic(err)
+	}
+
+	return rounded % (1 << d)
+}
+
+func TestCompress(t *testing.T) {
+	for d := 1; d < 12; d++ {
+		for n := 0; n < q; n++ {
+			expected := CompressRat(int64(n), int64(d))
+			result := int64(compress(fieldElement(n), uint8(d)))
+			if result != expected {
+				t.Errorf("compress(%d, %d): got %d, expected %d", n, d, result, expected)
+			}
+		}
+	}
+}
+
+func DeompressRat(y, d int64) int64 {
+	if (y < 0) || (y > (1 << d)) {
+		panic("y out of range")
+	}
+	if (d <= 0) || (d >= 12) {
+		panic("d out of range")
+	}
+
+	precise := big.NewRat(q*y, 1<<d) // (q / 2ᵈ) * y  ==  (q * y) / 2ᵈ
+
+	// FloatString rounds halves away from 0, and our result should always be positive,
+	// so it should work as we expect.
+	// (There's no direct way to convert a Rat to an integer)
+	rounded, err := strconv.ParseInt(precise.FloatString(0), 10, 64)
+	if err != nil {
+		panic(err)
+	}
+
+	return rounded % q
+}
+
+func TestDecompress(t *testing.T) {
+	for d := 1; d < 12; d++ {
+		for n := 0; n < (1 << d); n++ {
+			expected := DeompressRat(int64(n), int64(d))
+			result := int64(decompress(uint16(n), uint8(d)))
+			if result != expected {
+				t.Errorf("decompress(%d, %d): got %d, expected %d", n, d, result, expected)
 			}
 		}
 	}
@@ -221,15 +288,8 @@ type compvecs struct {
 	Decompress [][]int `json:"decompress"`
 }
 
-//go:embed testdata/compression.json
-var compressionvectorsJSON []byte
-var compressionvectors compvecs
-
 func init() {
 	if err := json.Unmarshal(vectorsJSON, &vectors); err != nil {
-		panic(err)
-	}
-	if err := json.Unmarshal(compressionvectorsJSON, &compressionvectors); err != nil {
 		panic(err)
 	}
 }
@@ -664,30 +724,6 @@ func TestWycheproofEncaps(t *testing.T) {
 	}
 	if err := scanner.Err(); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestCompress(t *testing.T) {
-	for d := 1; d < 12; d++ {
-		for n := 0; n < q; n++ {
-			expected := compressionvectors.Compress[d][n]
-			result := int(compress(fieldElement(n), uint8(d)))
-			if result != expected {
-				t.Errorf("compress(%d, %d): got %d, expected %d", n, d, result, expected)
-			}
-		}
-	}
-}
-
-func TestDecompress(t *testing.T) {
-	for d := 1; d < 12; d++ {
-		for n := 0; n < (1<<d); n++ {
-			expected := compressionvectors.Decompress[d][n]
-			result := int(decompress(uint16(n), uint8(d)))
-			if result != expected {
-				t.Errorf("decompress(%d, %d): got %d, expected %d", n, d, result, expected)
-			}
-		}
 	}
 }
 
