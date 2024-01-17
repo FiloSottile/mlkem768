@@ -283,11 +283,6 @@ func TestBadLengths(t *testing.T) {
 var vectorsJSON []byte
 var vectors map[string]map[string]string
 
-type compvecs struct {
-	Compress   [][]int `json:"compress"`
-	Decompress [][]int `json:"decompress"`
-}
-
 func init() {
 	if err := json.Unmarshal(vectorsJSON, &vectors); err != nil {
 		panic(err)
