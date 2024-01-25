@@ -81,7 +81,7 @@ func TestDecompressCompress(t *testing.T) {
 }
 
 func CompressRat(x fieldElement, d uint8) uint16 {
-	if x < 0 || x >= q {
+	if x >= q {
 		panic("x out of range")
 	}
 	if d <= 0 || d >= 12 {
@@ -114,7 +114,7 @@ func TestCompress(t *testing.T) {
 }
 
 func DecompressRat(y uint16, d uint8) fieldElement {
-	if y < 0 || y >= 1<<d {
+	if y >= 1<<d {
 		panic("y out of range")
 	}
 	if d <= 0 || d >= 12 {
@@ -785,21 +785,34 @@ func BenchmarkDecaps(b *testing.B) {
 }
 
 func BenchmarkRoundTrip(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		ek, dk, err := GenerateKey()
-		if err != nil {
-			b.Fatal(err)
-		}
-		c, Ke, err := Encapsulate(ek)
-		if err != nil {
-			b.Fatal(err)
-		}
-		Kd, err := Decapsulate(dk, c)
-		if err != nil {
-			b.Fatal(err)
-		}
-		if !bytes.Equal(Ke, Kd) {
-			b.Fail()
-		}
+	ek, dk, err := GenerateKey()
+	if err != nil {
+		b.Fatal(err)
 	}
+	c, _, err := Encapsulate(ek)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Run("Alice", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			ekS, dkS, err := GenerateKey()
+			if err != nil {
+				b.Fatal(err)
+			}
+			Ks, err := Decapsulate(dk, c)
+			if err != nil {
+				b.Fatal(err)
+			}
+			sink ^= ekS[0] ^ dkS[0] ^ Ks[0]
+		}
+	})
+	b.Run("Bob", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			cS, Ks, err := Encapsulate(ek)
+			if err != nil {
+				b.Fatal(err)
+			}
+			sink ^= cS[0] ^ Ks[0]
+		}
+	})
 }
