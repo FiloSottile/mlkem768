@@ -22,6 +22,7 @@ const (
 	EncapsulationKeySize = mlkem768.EncapsulationKeySize + 32
 	DecapsulationKeySize = mlkem768.DecapsulationKeySize + 32 + 32
 	SharedKeySize        = 32
+	SeedSize             = mlkem768.SeedSize + 32
 )
 
 // GenerateKey generates an encapsulation key and a corresponding decapsulation
@@ -48,18 +49,18 @@ func GenerateKey() (encapsulationKey, decapsulationKey []byte, err error) {
 // corresponding decapsulation key from a 96-byte seed. The seed must be
 // uniformly random.
 func NewKeyFromSeed(seed []byte) (encapsulationKey, decapsulationKey []byte, err error) {
-	if len(seed) != 96 {
+	if len(seed) != SeedSize {
 		return nil, nil, errors.New("xwing: invalid seed length")
 	}
 
-	skX := seed[64:96]
+	skX := seed[mlkem768.SeedSize:]
 	x, err := ecdh.X25519().NewPrivateKey(skX)
 	if err != nil {
 		return nil, nil, err
 	}
 	pkX := x.PublicKey().Bytes()
 
-	pkM, skM, err := mlkem768.NewKeyFromSeed(seed[0:64])
+	pkM, skM, err := mlkem768.NewKeyFromSeed(seed[:mlkem768.SeedSize])
 	if err != nil {
 		return nil, nil, err
 	}

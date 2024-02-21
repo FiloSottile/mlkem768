@@ -63,6 +63,7 @@ const (
 	EncapsulationKeySize = encryptionKeySize
 	DecapsulationKeySize = decryptionKeySize + encryptionKeySize + 32 + 32
 	SharedKeySize        = 32
+	SeedSize             = 32 + 32
 )
 
 // GenerateKey generates an encapsulation key and a corresponding decapsulation
@@ -86,10 +87,10 @@ func GenerateKey() (encapsulationKey, decapsulationKey []byte, err error) {
 // corresponding decapsulation key from a 64-byte seed. The seed must be
 // uniformly random.
 func NewKeyFromSeed(seed []byte) (encapsulationKey, decapsulationKey []byte, err error) {
-	if len(seed) != 64 {
+	if len(seed) != SeedSize {
 		return nil, nil, errors.New("mlkem768: invalid seed length")
 	}
-	ek, dk := kemKeyGen(seed[0:32], seed[32:64])
+	ek, dk := kemKeyGen(seed[:32], seed[32:])
 	return ek, dk, nil
 }
 
