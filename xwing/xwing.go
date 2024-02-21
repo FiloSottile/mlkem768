@@ -1,11 +1,11 @@
 // Package xwing implements the hybrid quantum-resistant key encapsulation
 // method X-Wing, which combines X25519, ML-KEM-768, and SHA3-256 as specified
-// in [draft-connolly-cfrg-xwing-kem-00].
+// in [draft-connolly-cfrg-xwing-kem-01].
 //
 // Future v0 versions of this package might introduce backwards incompatible
 // changes to implement changes to draft-connolly-cfrg-xwing-kem or FIPS 203.
 //
-// [draft-connolly-cfrg-xwing-kem-00]: https://www.ietf.org/archive/id/draft-connolly-cfrg-xwing-kem-00.html
+// [draft-connolly-cfrg-xwing-kem-01]: https://www.ietf.org/archive/id/draft-connolly-cfrg-xwing-kem-01.html
 package xwing
 
 import (
@@ -20,7 +20,7 @@ import (
 const (
 	CiphertextSize       = mlkem768.CiphertextSize + 32
 	EncapsulationKeySize = mlkem768.EncapsulationKeySize + 32
-	DecapsulationKeySize = mlkem768.DecapsulationKeySize + 32
+	DecapsulationKeySize = mlkem768.DecapsulationKeySize + 32 + 32
 	SharedKeySize        = 32
 )
 
@@ -41,7 +41,7 @@ func GenerateKey() (encapsulationKey, decapsulationKey []byte, err error) {
 		return nil, nil, err
 	}
 
-	return append(pkM, pkX...), append(skM, skX...), nil
+	return append(pkM, pkX...), append(append(skM, skX...), pkX...), nil
 }
 
 const xwingLabel = (`` +
@@ -111,16 +111,8 @@ func Decapsulate(decapsulationKey, ciphertext []byte) (sharedKey []byte, err err
 	ctM := ciphertext[:mlkem768.CiphertextSize]
 	ctX := ciphertext[mlkem768.CiphertextSize:]
 	skM := decapsulationKey[:mlkem768.DecapsulationKeySize]
-	skX := decapsulationKey[mlkem768.DecapsulationKeySize:]
-
-	// Recompute the X25519 public key to avoid requiring the encapsulation key
-	// as an argument to Decapsulate.
-	// See https://github.com/dconnolly/draft-connolly-cfrg-xwing-kem/issues/8.
-	x25519Key, err := ecdh.X25519().NewPrivateKey(skX)
-	if err != nil {
-		return nil, err
-	}
-	pkX := x25519Key.PublicKey().Bytes()
+	skX := decapsulationKey[mlkem768.DecapsulationKeySize : mlkem768.DecapsulationKeySize+32]
+	pkX := decapsulationKey[mlkem768.DecapsulationKeySize+32:]
 
 	ssM, err := mlkem768.Decapsulate(skM, ctM)
 	if err != nil {
@@ -128,6 +120,10 @@ func Decapsulate(decapsulationKey, ciphertext []byte) (sharedKey []byte, err err
 	}
 
 	peerKey, err := ecdh.X25519().NewPublicKey(ctX)
+	if err != nil {
+		return nil, err
+	}
+	x25519Key, err := ecdh.X25519().NewPrivateKey(skX)
 	if err != nil {
 		return nil, err
 	}
