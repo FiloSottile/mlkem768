@@ -82,6 +82,17 @@ func GenerateKey() (encapsulationKey, decapsulationKey []byte, err error) {
 	return ek, dk, nil
 }
 
+// NewKeyFromSeed deterministically generates an encapsulation key and a
+// corresponding decapsulation key from a 64-byte seed. The seed must be
+// uniformly random.
+func NewKeyFromSeed(seed []byte) (encapsulationKey, decapsulationKey []byte, err error) {
+	if len(seed) != 64 {
+		return nil, nil, errors.New("mlkem768: invalid seed length")
+	}
+	ek, dk := kemKeyGen(seed[0:32], seed[32:64])
+	return ek, dk, nil
+}
+
 // kemKeyGen generates an encapsulation key and a corresponding decapsulation key.
 //
 // It implements ML-KEM.KeyGen according to FIPS 203 (DRAFT), Algorithm 15.

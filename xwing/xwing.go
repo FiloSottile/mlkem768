@@ -44,6 +44,29 @@ func GenerateKey() (encapsulationKey, decapsulationKey []byte, err error) {
 	return append(pkM, pkX...), append(append(skM, skX...), pkX...), nil
 }
 
+// NewKeyFromSeed deterministically generates an encapsulation key and a
+// corresponding decapsulation key from a 96-byte seed. The seed must be
+// uniformly random.
+func NewKeyFromSeed(seed []byte) (encapsulationKey, decapsulationKey []byte, err error) {
+	if len(seed) != 96 {
+		return nil, nil, errors.New("xwing: invalid seed length")
+	}
+
+	skX := seed[64:96]
+	x, err := ecdh.X25519().NewPrivateKey(skX)
+	if err != nil {
+		return nil, nil, err
+	}
+	pkX := x.PublicKey().Bytes()
+
+	pkM, skM, err := mlkem768.NewKeyFromSeed(seed[0:64])
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return append(pkM, pkX...), append(append(skM, skX...), pkX...), nil
+}
+
 const xwingLabel = (`` +
 	`\./` +
 	`/^\`)
