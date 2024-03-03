@@ -41,6 +41,8 @@ const (
 	n = 256
 	q = 3329
 
+	log2q = 12
+
 	// ML-KEM-768 parameters. The code makes assumptions based on these values,
 	// they can't be changed blindly.
 	k  = 3
@@ -48,11 +50,11 @@ const (
 	du = 10
 	dv = 4
 
-	// encodingSizeX is the byte size of a ringElement or nttElement encoded by
-	// ByteEncode_X.
-	encodingSize12 = n * 12 / 8
-	encodingSize10 = n * 10 / 8
-	encodingSize4  = n * 4 / 8
+	// encodingSizeX is the byte size of a ringElement or nttElement encoded
+	// by ByteEncode_X (FIPS 203 (DRAFT), Algorithm 4).
+	encodingSize12 = n * log2q / 8
+	encodingSize10 = n * du / 8
+	encodingSize4  = n * dv / 8
 	encodingSize1  = n * 1 / 8
 
 	messageSize       = encodingSize1
@@ -188,7 +190,7 @@ func kemEncaps(ek, m []byte) (c, K []byte, err error) {
 	g.Write(m)
 	g.Write(H[:])
 	G := g.Sum(nil)
-	K, r := G[:32], G[32:]
+	K, r := G[:SharedKeySize], G[SharedKeySize:]
 	c, err = pkeEncrypt(ek, m, r)
 	return c, K, err
 }
@@ -290,20 +292,24 @@ func kemDecaps(dk, c []byte) (K []byte, err error) {
 
 	m, err := pkeDecrypt(dkPKE, c)
 	if err != nil {
+		// This is only reachable if the ciphertext or the decryption key are
+		// encoded incorrectly, so it leaks no information about the message.
 		return nil, err
 	}
 	g := sha3.New512()
 	g.Write(m)
 	g.Write(h)
 	G := g.Sum(nil)
-	Kprime, r := G[:32], G[32:]
+	Kprime, r := G[:SharedKeySize], G[SharedKeySize:]
 	J := sha3.NewShake256()
 	J.Write(z)
 	J.Write(c)
-	Kout := make([]byte, 32)
+	Kout := make([]byte, SharedKeySize)
 	J.Read(Kout)
 	c1, err := pkeEncrypt(ekPKE, m, r)
 	if err != nil {
+		// Likewise, this is only reachable if the encryption key is encoded
+		// incorrectly, so it leaks no secret information through timing.
 		return nil, err
 	}
 
@@ -348,11 +354,11 @@ func pkeDecrypt(dk, c []byte) ([]byte, error) {
 		dk = dk[encodingSize12:]
 	}
 
-	var v1NTT nttElement // s⊺ ◦ NTT(u)
+	var mask nttElement // s⊺ ◦ NTT(u)
 	for i := range s {
-		v1NTT = polyAdd(v1NTT, nttMul(s[i], ntt(u[i])))
+		mask = polyAdd(mask, nttMul(s[i], ntt(u[i])))
 	}
-	w := polySub(v, inverseNTT(v1NTT))
+	w := polySub(v, inverseNTT(mask))
 
 	return ringCompressAndEncode1(nil, w), nil
 }
@@ -387,8 +393,8 @@ func fieldSub(a, b fieldElement) fieldElement {
 }
 
 const (
-	barrettMultiplier = 5039 // 4¹² / q
-	barrettShift      = 24   // log₂(4¹²)
+	barrettMultiplier = 5039 // 2¹² * 2¹² / q
+	barrettShift      = 24   // log₂(2¹² * 2¹²)
 )
 
 // fieldReduce reduces a value a < q² using Barrett reduction, to avoid
@@ -559,7 +565,8 @@ func ringDecodeAndDecompress1(b []byte) (ringElement, error) {
 	var f ringElement
 	for i := range f {
 		b_i := b[i/8] >> (i % 8) & 1
-		f[i] = fieldElement(b_i) * 1665 // 0 decompresses to 0, and 1 to 1665
+		const halfQ = (q + 1) / 2        // ⌈q/2⌋, rounded up per FIPS 203 (DRAFT), Section 2.3
+		f[i] = fieldElement(b_i) * halfQ // 0 decompresses to 0, and 1 to ⌈q/2⌋
 	}
 	return f, nil
 }
@@ -738,7 +745,7 @@ func inverseNTT(f nttElement) ringElement {
 		}
 	}
 	for i := range f {
-		f[i] = fieldMul(f[i], 3303)
+		f[i] = fieldMul(f[i], 3303) // 3303 = 128⁻¹ mod q
 	}
 	return ringElement(f)
 }

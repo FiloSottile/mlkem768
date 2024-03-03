@@ -76,6 +76,13 @@ func TestDecompressCompress(t *testing.T) {
 			if c >= 1<<bits {
 				t.Fatalf("compress(%d, %d) = %d >= 2^bits", a, bits, c)
 			}
+			got := decompress(c, bits)
+			diff := min(a-got, got-a, a-got+q, got-a+q)
+			ceil := q / (1 << bits)
+			if diff > fieldElement(ceil) {
+				t.Fatalf("decompress(compress(%d, %d), %d) = %d (diff %d, max diff %d)",
+					a, bits, bits, got, diff, ceil)
+			}
 		}
 	}
 }
