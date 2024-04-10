@@ -1,4 +1,4 @@
-// Copyright (c) 2023 The Go Authors. All rights reserved.
+// Copyright 2023 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -9,7 +9,7 @@
 //
 // The version currently implemented is the one specified by [NIST FIPS 203 ipd],
 // with the unintentional transposition of the matrix A reverted to match the
-// behavior of [Kyber version 3.0]. Future v0 versions of this package might
+// behavior of [Kyber version 3.0]. Future versions of this package might
 // introduce backwards incompatible changes to implement changes to FIPS 203.
 //
 // [Kyber version 3.0]: https://pq-crystals.org/kyber/data/kyber-specification-round3-20210804.pdf
