@@ -57,7 +57,7 @@ func TestNISTVectors(t *testing.T) {
 		ctExp := vector("NIST Encapsulation", "ct")
 		kExp := vector("NIST Encapsulation", "k")
 
-		ct, k, err := kemEncaps(ek, msg)
+		ct, k, err := EncapsulateDerand(ek, msg)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -74,7 +74,7 @@ func TestNISTVectors(t *testing.T) {
 		ct := vector("NIST Decapsulation", "ct")
 		kExp := vector("NIST Decapsulation", "k")
 
-		k, err := kemDecaps(dk, ct)
+		k, err := Decapsulate(dk, ct)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -102,7 +102,7 @@ func TestPQCrystalsVector(t *testing.T) {
 	ctExp := vector("PQCrystals", "Ciphertext")
 	kExp := vector("PQCrystals", "Shared Secret")
 
-	ct, k, err := kemEncaps(ek, msg)
+	ct, k, err := EncapsulateDerand(ek, msg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestPQCKATVector(t *testing.T) {
 	ctExp := vector("post-quantum-cryptography/KAT", "ct")
 	kExp := vector("post-quantum-cryptography/KAT", "ss")
 
-	ct, k, err := kemEncaps(ek, msg)
+	ct, k, err := EncapsulateDerand(ek, msg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestUnluckyVector(t *testing.T) {
 	ctExp := vector("unlucky", "ct")
 	kExp := vector("unlucky", "ss")
 
-	ct, k, err := kemEncaps(ek, msg)
+	ct, k, err := EncapsulateDerand(ek, msg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -341,7 +341,7 @@ func TestWycheproofEncaps(t *testing.T) {
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
-			ct, k, err := kemEncaps(ek, m)
+			ct, k, err := EncapsulateDerand(ek, m)
 			if err != nil && !expErr {
 				t.Errorf("unexpected error for %s: %v", comment, err)
 			}
