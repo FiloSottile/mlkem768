@@ -42,11 +42,11 @@ func TestNISTVectors(t *testing.T) {
 		ekExp := vector("NIST Key Generation", "ek")
 		dkExp := vector("NIST Key Generation", "dk")
 
-		ek, dk := kemKeyGen(d, z)
+		ek, dk := GenerateKeyDerand(t, d, z)
 		if !bytes.Equal(ek, ekExp) {
 			t.Errorf("ek: got %x, expected %x", ek, ekExp)
 		}
-		if !bytes.Equal(dk, dkExp) {
+		if !bytes.Equal(dk.Bytes(), dkExp) {
 			t.Errorf("dk: got %x, expected %x", dk, dkExp)
 		}
 	})
@@ -74,7 +74,7 @@ func TestNISTVectors(t *testing.T) {
 		ct := vector("NIST Decapsulation", "ct")
 		kExp := vector("NIST Decapsulation", "k")
 
-		k, err := Decapsulate(dk, ct)
+		k, err := DecapsulateFromBytes(dk, ct)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -90,11 +90,11 @@ func TestPQCrystalsVector(t *testing.T) {
 	ekExp := vector("PQCrystals", "Public Key")
 	dkExp := vector("PQCrystals", "Secret Key")
 
-	ek, dk := kemKeyGen(d, z)
+	ek, dk := GenerateKeyDerand(t, d, z)
 	if !bytes.Equal(ek, ekExp) {
 		t.Errorf("ek: got %x, expected %x", ek, ekExp)
 	}
-	if !bytes.Equal(dk, dkExp) {
+	if !bytes.Equal(dk.Bytes(), dkExp) {
 		t.Errorf("dk: got %x, expected %x", dk, dkExp)
 	}
 
@@ -139,11 +139,11 @@ func TestPQCKATVector(t *testing.T) {
 	ekExp := vector("post-quantum-cryptography/KAT", "pk")
 	dkExp := vector("post-quantum-cryptography/KAT", "sk")
 
-	ek, dk := kemKeyGen(d, z)
+	ek, dk := GenerateKeyDerand(t, d, z)
 	if !bytes.Equal(ek, ekExp) {
 		t.Errorf("ek: got %x, expected %x", ek, ekExp)
 	}
-	if !bytes.Equal(dk, dkExp) {
+	if !bytes.Equal(dk.Bytes(), dkExp) {
 		t.Errorf("dk: got %x, expected %x", dk, dkExp)
 	}
 
@@ -188,11 +188,11 @@ func TestUnluckyVector(t *testing.T) {
 	ekExp := vector("unlucky", "pk")
 	dkExp := vector("unlucky", "sk")
 
-	ek, dk := kemKeyGen(d, z)
+	ek, dk := GenerateKeyDerand(t, d, z)
 	if !bytes.Equal(ek, ekExp) {
 		t.Errorf("ek: got %x, expected %x", ek, ekExp)
 	}
-	if !bytes.Equal(dk, dkExp) {
+	if !bytes.Equal(dk.Bytes(), dkExp) {
 		t.Errorf("dk: got %x, expected %x", dk, dkExp)
 	}
 
@@ -225,7 +225,7 @@ func TestStrcmpVector(t *testing.T) {
 	ct := vector("strcmp", "ct")
 	kExp := vector("strcmp", "ss")
 
-	k, err := Decapsulate(dk, ct)
+	k, err := DecapsulateFromBytes(dk, ct)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +276,7 @@ func TestWycheproofDecaps(t *testing.T) {
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
-			ss, err := Decapsulate(dk, ct)
+			ss, err := DecapsulateFromBytes(dk, ct)
 			if err != nil && !expErr {
 				t.Errorf("unexpected error for %s: %v", comment, err)
 			}
