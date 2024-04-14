@@ -471,7 +471,7 @@ const (
 	barrettShift      = 24   // log₂(2¹² * 2¹²)
 )
 
-// fieldReduce reduces a value a < q² using Barrett reduction, to avoid
+// fieldReduce reduces a value a < 2q² using Barrett reduction, to avoid
 // potentially variable-time division.
 func fieldReduce(a uint32) fieldElement {
 	quotient := uint32((uint64(a) * barrettMultiplier) >> barrettShift)
@@ -480,6 +480,21 @@ func fieldReduce(a uint32) fieldElement {
 
 func fieldMul(a, b fieldElement) fieldElement {
 	x := uint32(a) * uint32(b)
+	return fieldReduce(x)
+}
+
+// fieldMulSub returns a * (b - c). This operation is fused to save a
+// fieldReduceOnce after the subtraction.
+func fieldMulSub(a, b, c fieldElement) fieldElement {
+	x := uint32(a) * uint32(b-c+q)
+	return fieldReduce(x)
+}
+
+// fieldAddMul returns a * b + c * d. This operation is fused to save a
+// fieldReduceOnce and a fieldReduce.
+func fieldAddMul(a, b, c, d fieldElement) fieldElement {
+	x := uint32(a) * uint32(b)
+	x += uint32(c) * uint32(d)
 	return fieldReduce(x)
 }
 
@@ -750,8 +765,8 @@ func nttMul(f, g nttElement) nttElement {
 	for i := 0; i < 128; i++ {
 		a0, a1 := f[2*i], f[2*i+1]
 		b0, b1 := g[2*i], g[2*i+1]
-		h[2*i] = fieldAdd(fieldMul(a0, b0), fieldMul(fieldMul(a1, b1), gammas[i]))
-		h[2*i+1] = fieldAdd(fieldMul(a0, b1), fieldMul(a1, b0))
+		h[2*i] = fieldAddMul(a0, b0, fieldMul(a1, b1), gammas[i])
+		h[2*i+1] = fieldAddMul(a0, b1, a1, b0)
 	}
 	return h
 }
@@ -800,12 +815,12 @@ func inverseNTT(f nttElement) ringElement {
 				{
 					t := f[j]
 					f[j] = fieldAdd(t, f[j+len])
-					f[j+len] = fieldMul(zeta, fieldSub(f[j+len], t))
+					f[j+len] = fieldMulSub(zeta, f[j+len], t)
 				}
 				{
 					t := f[j+1]
 					f[j+1] = fieldAdd(t, f[j+1+len])
-					f[j+1+len] = fieldMul(zeta, fieldSub(f[j+1+len], t))
+					f[j+1+len] = fieldMulSub(zeta, f[j+1+len], t)
 				}
 			}
 		}

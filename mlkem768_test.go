@@ -18,6 +18,16 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
+func TestFieldReduce(t *testing.T) {
+	for a := uint32(0); a < 2*q*q; a++ {
+		got := fieldReduce(a)
+		exp := fieldElement(a % q)
+		if got != exp {
+			t.Fatalf("reduce(%d) = %d, expected %d", a, got, exp)
+		}
+	}
+}
+
 func TestFieldAdd(t *testing.T) {
 	for a := fieldElement(0); a < q; a++ {
 		for b := fieldElement(0); b < q; b++ {
