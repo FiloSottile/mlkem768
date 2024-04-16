@@ -784,18 +784,12 @@ func ntt(f ringElement) nttElement {
 		for start := 0; start < 256; start += 2 * len {
 			zeta := zetas[k]
 			k++
-			for j := start; j < start+len; j += 2 {
-				// Loop 2x unrolled for performance.
-				{
-					t := fieldMul(zeta, f[j+len])
-					f[j+len] = fieldSub(f[j], t)
-					f[j] = fieldAdd(f[j], t)
-				}
-				{
-					t := fieldMul(zeta, f[j+1+len])
-					f[j+1+len] = fieldSub(f[j+1], t)
-					f[j+1] = fieldAdd(f[j+1], t)
-				}
+			// Bounds check elimination hint.
+			f, flen := f[start:start+len], f[start+len:start+len+len]
+			for j := 0; j < len; j++ {
+				t := fieldMul(zeta, flen[j])
+				flen[j] = fieldSub(f[j], t)
+				f[j] = fieldAdd(f[j], t)
 			}
 		}
 	}
@@ -811,18 +805,12 @@ func inverseNTT(f nttElement) ringElement {
 		for start := 0; start < 256; start += 2 * len {
 			zeta := zetas[k]
 			k--
-			for j := start; j < start+len; j += 2 {
-				// Loop 2x unrolled for performance.
-				{
-					t := f[j]
-					f[j] = fieldAdd(t, f[j+len])
-					f[j+len] = fieldMulSub(zeta, f[j+len], t)
-				}
-				{
-					t := f[j+1]
-					f[j+1] = fieldAdd(t, f[j+1+len])
-					f[j+1+len] = fieldMulSub(zeta, f[j+1+len], t)
-				}
+			// Bounds check elimination hint.
+			f, flen := f[start:start+len], f[start+len:start+len+len]
+			for j := 0; j < len; j++ {
+				t := f[j]
+				f[j] = fieldAdd(t, flen[j])
+				flen[j] = fieldMulSub(zeta, flen[j], t)
 			}
 		}
 	}
