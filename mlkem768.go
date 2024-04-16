@@ -762,11 +762,12 @@ var gammas = [128]fieldElement{17, 3312, 2761, 568, 583, 2746, 2649, 680, 1637, 
 // It implements MultiplyNTTs, according to FIPS 203 (DRAFT), Algorithm 10.
 func nttMul(f, g nttElement) nttElement {
 	var h nttElement
-	for i := 0; i < 128; i++ {
-		a0, a1 := f[2*i], f[2*i+1]
-		b0, b1 := g[2*i], g[2*i+1]
-		h[2*i] = fieldAddMul(a0, b0, fieldMul(a1, b1), gammas[i])
-		h[2*i+1] = fieldAddMul(a0, b1, a1, b0)
+	// We use i += 2 for bounds check elimination. See https://go.dev/issue/66826.
+	for i := 0; i < 256; i += 2 {
+		a0, a1 := f[i], f[i+1]
+		b0, b1 := g[i], g[i+1]
+		h[i] = fieldAddMul(a0, b0, fieldMul(a1, b1), gammas[i/2])
+		h[i+1] = fieldAddMul(a0, b1, a1, b0)
 	}
 	return h
 }
