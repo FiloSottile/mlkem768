@@ -135,7 +135,9 @@ func newKeyFromSeed(dk *DecapsulationKey, seed []byte) (*DecapsulationKey, error
 	if len(seed) != SeedSize {
 		return nil, errors.New("mlkem768: invalid seed length")
 	}
-	return kemKeyGen(dk, (*[32]byte)(seed[:32]), (*[32]byte)(seed[32:])), nil
+	d := (*[32]byte)(seed[:32])
+	z := (*[32]byte)(seed[32:])
+	return kemKeyGen(dk, d, z), nil
 }
 
 // NewKeyFromExtendedEncoding parses a decapsulation key from its FIPS 203
@@ -365,7 +367,8 @@ func Decapsulate(dk *DecapsulationKey, ciphertext []byte) (sharedKey []byte, err
 	if len(ciphertext) != CiphertextSize {
 		return nil, errors.New("mlkem768: invalid ciphertext length")
 	}
-	return kemDecaps(dk, (*[CiphertextSize]byte)(ciphertext)), nil
+	c := (*[CiphertextSize]byte)(ciphertext)
+	return kemDecaps(dk, c), nil
 }
 
 // kemDecaps produces a shared key from a ciphertext.
@@ -425,8 +428,8 @@ func pkeDecrypt(dx *decryptionKey, c *[CiphertextSize]byte) []byte {
 		u[i] = ringDecodeAndDecompress10(b)
 	}
 
-	v := ringDecodeAndDecompress4(
-		(*[encodingSize4]byte)(c[encodingSize10*k:]))
+	b := (*[encodingSize4]byte)(c[encodingSize10*k:])
+	v := ringDecodeAndDecompress4(b)
 
 	var mask nttElement // s⊺ ◦ NTT(u)
 	for i := range dx.s {
