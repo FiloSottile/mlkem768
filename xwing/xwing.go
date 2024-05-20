@@ -37,12 +37,14 @@ func GenerateKey() (encapsulationKey, decapsulationKey []byte, err error) {
 	skX := x.Bytes()
 	pkX := x.PublicKey().Bytes()
 
-	pkM, skM, err := mlkem768.GenerateKey()
+	skM, err := mlkem768.GenerateKey()
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return append(pkM, pkX...), append(append(skM, skX...), pkX...), nil
+	pkM := skM.EncapsulationKey()
+
+	return append(pkM, pkX...), append(append(skM.Bytes(), skX...), pkX...), nil
 }
 
 // NewKeyFromSeed deterministically generates an encapsulation key and a
@@ -60,12 +62,14 @@ func NewKeyFromSeed(seed []byte) (encapsulationKey, decapsulationKey []byte, err
 	}
 	pkX := x.PublicKey().Bytes()
 
-	pkM, skM, err := mlkem768.NewKeyFromSeed(seed[:mlkem768.SeedSize])
+	skM, err := mlkem768.NewKeyFromSeed(seed[:mlkem768.SeedSize])
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return append(pkM, pkX...), append(append(skM, skX...), pkX...), nil
+	pkM := skM.EncapsulationKey()
+
+	return append(pkM, pkX...), append(append(skM.Bytes(), skX...), pkX...), nil
 }
 
 const xwingLabel = (`` +
@@ -134,9 +138,14 @@ func Decapsulate(decapsulationKey, ciphertext []byte) (sharedKey []byte, err err
 
 	ctM := ciphertext[:mlkem768.CiphertextSize]
 	ctX := ciphertext[mlkem768.CiphertextSize:]
-	skM := decapsulationKey[:mlkem768.DecapsulationKeySize]
+	skMBytes := decapsulationKey[:mlkem768.DecapsulationKeySize]
 	skX := decapsulationKey[mlkem768.DecapsulationKeySize : mlkem768.DecapsulationKeySize+32]
 	pkX := decapsulationKey[mlkem768.DecapsulationKeySize+32:]
+
+	skM, err := mlkem768.NewKeyFromExtendedEncoding(skMBytes)
+	if err != nil {
+		return nil, err
+	}
 
 	ssM, err := mlkem768.Decapsulate(skM, ctM)
 	if err != nil {
