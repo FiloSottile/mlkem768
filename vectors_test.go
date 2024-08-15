@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+//go:build ignore
+
 package mlkem768
 
 import (
@@ -11,9 +13,12 @@ import (
 	_ "embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
+
+	"golang.org/x/crypto/sha3"
 )
 
 //go:embed testdata/vectors.json
@@ -30,6 +35,43 @@ func vector(group, name string) []byte {
 	h := vectors[group][name]
 	v, _ := hex.DecodeString(h)
 	return v
+}
+
+func EncapsulateDerand(ek, m []byte) (c, K []byte, err error) {
+	if len(m) != messageSize {
+		return nil, nil, errors.New("bad message length")
+	}
+	return kemEncaps(nil, ek, (*[messageSize]byte)(m))
+}
+
+func DecapsulateFromBytes(dkBytes, c []byte) ([]byte, error) {
+	if len(c) != CiphertextSize {
+		return nil, errors.New("bad ciphertext length")
+	}
+	if len(dkBytes) != DecapsulationKeySize {
+		return nil, errors.New("bad key length")
+	}
+	dk := &DecapsulationKey{}
+	dk.dk = [DecapsulationKeySize]byte(dkBytes)
+	dkPKE := dkBytes[:decryptionKeySize]
+	for i := range dk.s {
+		f, err := polyByteDecode[nttElement](dkPKE[:encodingSize12])
+		if err != nil {
+			return nil, err
+		}
+		dk.s[i] = f
+		dkPKE = dkPKE[encodingSize12:]
+	}
+	ekPKE := dkBytes[decryptionKeySize : decryptionKeySize+encryptionKeySize]
+	if err := parseEK(&dk.encryptionKey, ekPKE); err != nil {
+		return nil, err
+	}
+	H := sha3.Sum256(ekPKE)
+	h := dkBytes[decryptionKeySize+encryptionKeySize : decryptionKeySize+encryptionKeySize+32]
+	if !bytes.Equal(H[:], h) {
+		return nil, errors.New("bad ek hash")
+	}
+	return kemDecaps(dk, (*[CiphertextSize]byte)(c)), nil
 }
 
 func TestNISTVectors(t *testing.T) {
