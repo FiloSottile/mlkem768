@@ -64,8 +64,11 @@ const (
 // A DecapsulationKey is the secret key used to decapsulate a shared key from a
 // ciphertext. It includes various precomputed values.
 type DecapsulationKey struct {
-	dk [DecapsulationKeySize]byte
-	d  [32]byte
+	d, z [32]byte // decapsulation key seed
+
+	ρ [32]byte // sampleNTT seed for A, stored for the encapsulation key
+	h [32]byte // H(ek), stored for ML-KEM.Decaps_internal
+
 	encryptionKey
 	decryptionKey
 }
@@ -74,17 +77,24 @@ type DecapsulationKey struct {
 func (dk *DecapsulationKey) Bytes() []byte {
 	var b [SeedSize]byte
 	copy(b[:], dk.d[:])
-	z := dk.dk[len(dk.dk)-32:]
-	copy(b[32:], z)
+	copy(b[32:], dk.z[:])
 	return b[:]
 }
 
 // EncapsulationKey returns the public encapsulation key necessary to produce
 // ciphertexts.
 func (dk *DecapsulationKey) EncapsulationKey() []byte {
-	var b [EncapsulationKeySize]byte
-	copy(b[:], dk.dk[decryptionKeySize:])
-	return b[:]
+	// The actual logic is in a separate function to outline this allocation.
+	b := make([]byte, 0, EncapsulationKeySize)
+	return dk.encapsulationKey(b)
+}
+
+func (dk *DecapsulationKey) encapsulationKey(b []byte) []byte {
+	for i := range dk.t {
+		b = polyByteEncode(b, dk.t[i])
+	}
+	b = append(b, dk.ρ[:]...)
+	return b
 }
 
 // encryptionKey is the parsed and expanded form of a PKE encryption key.
@@ -145,12 +155,14 @@ func kemKeyGen(dk *DecapsulationKey, d, z *[32]byte) *DecapsulationKey {
 		dk = &DecapsulationKey{}
 	}
 	dk.d = *d
+	dk.z = *z
 
 	g := sha3.New512()
 	g.Write(d[:])
 	g.Write([]byte{k}) // Module dimension as a domain separator.
 	G := g.Sum(nil)
 	ρ, σ := G[:32], G[32:]
+	dk.ρ = [32]byte(ρ)
 
 	A := &dk.a
 	for i := byte(0); i < k; i++ {
@@ -179,30 +191,10 @@ func kemKeyGen(dk *DecapsulationKey, d, z *[32]byte) *DecapsulationKey {
 		}
 	}
 
-	// dkPKE ← ByteEncode₁₂(s)
-	// ekPKE ← ByteEncode₁₂(t) || ρ
-	// ek ← ekPKE
-	// dk ← dkPKE || ek || H(ek) || z
-	dkB := dk.dk[:0]
-
-	for i := range s {
-		dkB = polyByteEncode(dkB, s[i])
-	}
-
-	for i := range t {
-		dkB = polyByteEncode(dkB, t[i])
-	}
-	dkB = append(dkB, ρ...)
-
 	H := sha3.New256()
-	H.Write(dkB[decryptionKeySize:])
-	dkB = H.Sum(dkB)
-
-	dkB = append(dkB, z[:]...)
-
-	if len(dkB) != len(dk.dk) {
-		panic("mlkem768: internal error: invalid decapsulation key size")
-	}
+	ek := dk.EncapsulationKey()
+	H.Write(ek)
+	H.Sum(dk.h[:0])
 
 	return dk
 }
@@ -343,17 +335,14 @@ func Decapsulate(dk *DecapsulationKey, ciphertext []byte) (sharedKey []byte, err
 //
 // It implements ML-KEM.Decaps_internal according to FIPS 203, Algorithm 18.
 func kemDecaps(dk *DecapsulationKey, c *[CiphertextSize]byte) (K []byte) {
-	h := dk.dk[decryptionKeySize+encryptionKeySize : decryptionKeySize+encryptionKeySize+32]
-	z := dk.dk[decryptionKeySize+encryptionKeySize+32:]
-
 	m := pkeDecrypt(&dk.decryptionKey, c)
 	g := sha3.New512()
 	g.Write(m[:])
-	g.Write(h)
+	g.Write(dk.h[:])
 	G := g.Sum(nil)
 	Kprime, r := G[:SharedKeySize], G[SharedKeySize:]
 	J := sha3.NewShake256()
-	J.Write(z)
+	J.Write(dk.z[:])
 	J.Write(c[:])
 	Kout := make([]byte, SharedKeySize)
 	J.Read(Kout)
