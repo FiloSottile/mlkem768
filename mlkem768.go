@@ -56,7 +56,6 @@ const (
 
 	CiphertextSize       = k*encodingSize10 + encodingSize4
 	EncapsulationKeySize = encryptionKeySize
-	DecapsulationKeySize = decryptionKeySize + encryptionKeySize + 32 + 32
 	SharedKeySize        = 32
 	SeedSize             = 32 + 32
 )
@@ -73,7 +72,7 @@ type DecapsulationKey struct {
 	decryptionKey
 }
 
-// Bytes returns the decapsulation key as a 64-byte seed in the "d || z" form
+// Bytes returns the decapsulation key as a 64-byte seed in the "d || z" form.
 func (dk *DecapsulationKey) Bytes() []byte {
 	var b [SeedSize]byte
 	copy(b[:], dk.d[:])

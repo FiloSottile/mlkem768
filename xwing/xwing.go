@@ -1,14 +1,15 @@
 // Package xwing implements the hybrid quantum-resistant key encapsulation
 // method X-Wing, which combines X25519, ML-KEM-768, and SHA3-256 as specified
-// in [draft-connolly-cfrg-xwing-kem-01].
+// in [draft-connolly-cfrg-xwing-kem-04].
 //
 // Future v0 versions of this package might introduce backwards incompatible
-// changes to implement changes to draft-connolly-cfrg-xwing-kem or FIPS 203.
+// changes to implement changes to draft-connolly-cfrg-xwing-kem.
 //
-// [draft-connolly-cfrg-xwing-kem-01]: https://www.ietf.org/archive/id/draft-connolly-cfrg-xwing-kem-01.html
+// [draft-connolly-cfrg-xwing-kem-04]: https://www.ietf.org/archive/id/draft-connolly-cfrg-xwing-kem-04.html
 package xwing
 
 import (
+	"bytes"
 	"crypto/ecdh"
 	"crypto/rand"
 	"errors"
@@ -20,52 +21,73 @@ import (
 const (
 	CiphertextSize       = mlkem768.CiphertextSize + 32
 	EncapsulationKeySize = mlkem768.EncapsulationKeySize + 32
-	DecapsulationKeySize = mlkem768.DecapsulationKeySize + 32 + 32
 	SharedKeySize        = 32
-	SeedSize             = mlkem768.SeedSize + 32
+	SeedSize             = 32
 )
 
-// GenerateKey generates an encapsulation key and a corresponding decapsulation
-// key, drawing random bytes from crypto/rand.
-//
-// The decapsulation key must be kept secret.
-func GenerateKey() (encapsulationKey, decapsulationKey []byte, err error) {
-	x, err := ecdh.X25519().GenerateKey(rand.Reader)
-	if err != nil {
-		return nil, nil, err
-	}
-	skX := x.Bytes()
-	pkX := x.PublicKey().Bytes()
-
-	pkM, skM, err := mlkem768.GenerateKey()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return append(pkM, pkX...), append(append(skM, skX...), pkX...), nil
+// A DecapsulationKey is the secret key used to decapsulate a shared key from a
+// ciphertext. It includes various precomputed values.
+type DecapsulationKey struct {
+	sk  [SeedSize]byte
+	skM *mlkem768.DecapsulationKey
+	skX *ecdh.PrivateKey
+	pk  [EncapsulationKeySize]byte
 }
 
-// NewKeyFromSeed deterministically generates an encapsulation key and a
-// corresponding decapsulation key from a 96-byte seed. The seed must be
-// uniformly random.
-func NewKeyFromSeed(seed []byte) (encapsulationKey, decapsulationKey []byte, err error) {
-	if len(seed) != SeedSize {
-		return nil, nil, errors.New("xwing: invalid seed length")
+// Bytes returns the decapsulation key as a 32-byte seed.
+func (dk *DecapsulationKey) Bytes() []byte {
+	return bytes.Clone(dk.sk[:])
+}
+
+// EncapsulationKey returns the public encapsulation key necessary to produce
+// ciphertexts.
+func (dk *DecapsulationKey) EncapsulationKey() []byte {
+	return bytes.Clone(dk.pk[:])
+}
+
+// GenerateKey generates a new decapsulation key, drawing random bytes from
+// crypto/rand. The decapsulation key must be kept secret.
+func GenerateKey() (*DecapsulationKey, error) {
+	sk := make([]byte, SeedSize)
+	if _, err := rand.Read(sk); err != nil {
+		return nil, err
+	}
+	return NewKeyFromSeed(sk)
+}
+
+// NewKeyFromSeed deterministically generates a decapsulation key from a 32-byte
+// seed. The seed must be uniformly random.
+func NewKeyFromSeed(sk []byte) (*DecapsulationKey, error) {
+	if len(sk) != SeedSize {
+		return nil, errors.New("xwing: invalid seed length")
 	}
 
-	skX := seed[mlkem768.SeedSize:]
+	s := sha3.NewShake128()
+	s.Write(sk)
+	expanded := make([]byte, mlkem768.SeedSize+32)
+	if _, err := s.Read(expanded); err != nil {
+		return nil, err
+	}
+
+	skM, err := mlkem768.NewKeyFromSeed(expanded[:mlkem768.SeedSize])
+	if err != nil {
+		return nil, err
+	}
+	pkM := skM.EncapsulationKey()
+
+	skX := expanded[mlkem768.SeedSize:]
 	x, err := ecdh.X25519().NewPrivateKey(skX)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	pkX := x.PublicKey().Bytes()
 
-	pkM, skM, err := mlkem768.NewKeyFromSeed(seed[:mlkem768.SeedSize])
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return append(pkM, pkX...), append(append(skM, skX...), pkX...), nil
+	dk := &DecapsulationKey{}
+	copy(dk.sk[:], sk)
+	dk.skM = skM
+	dk.skX = x
+	copy(dk.pk[:], append(pkM, pkX...))
+	return dk, nil
 }
 
 const xwingLabel = (`` +
@@ -120,25 +142,19 @@ func Encapsulate(encapsulationKey []byte) (ciphertext, sharedKey []byte, err err
 }
 
 // Decapsulate generates a shared key from a ciphertext and a decapsulation key.
-// If the decapsulation key or the ciphertext are not valid, Decapsulate returns
-// an error.
+// If the ciphertext is not valid, Decapsulate returns an error.
 //
 // The shared key must be kept secret.
-func Decapsulate(decapsulationKey, ciphertext []byte) (sharedKey []byte, err error) {
-	if len(decapsulationKey) != DecapsulationKeySize {
-		return nil, errors.New("xwing: invalid decapsulation key length")
-	}
+func Decapsulate(dk *DecapsulationKey, ciphertext []byte) (sharedKey []byte, err error) {
 	if len(ciphertext) != CiphertextSize {
 		return nil, errors.New("xwing: invalid ciphertext length")
 	}
 
 	ctM := ciphertext[:mlkem768.CiphertextSize]
 	ctX := ciphertext[mlkem768.CiphertextSize:]
-	skM := decapsulationKey[:mlkem768.DecapsulationKeySize]
-	skX := decapsulationKey[mlkem768.DecapsulationKeySize : mlkem768.DecapsulationKeySize+32]
-	pkX := decapsulationKey[mlkem768.DecapsulationKeySize+32:]
+	pkX := dk.pk[mlkem768.EncapsulationKeySize:]
 
-	ssM, err := mlkem768.Decapsulate(skM, ctM)
+	ssM, err := mlkem768.Decapsulate(dk.skM, ctM)
 	if err != nil {
 		return nil, err
 	}
@@ -147,11 +163,7 @@ func Decapsulate(decapsulationKey, ciphertext []byte) (sharedKey []byte, err err
 	if err != nil {
 		return nil, err
 	}
-	x25519Key, err := ecdh.X25519().NewPrivateKey(skX)
-	if err != nil {
-		return nil, err
-	}
-	ssX, err := x25519Key.ECDH(peerKey)
+	ssX, err := dk.skX.ECDH(peerKey)
 	if err != nil {
 		return nil, err
 	}
