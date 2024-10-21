@@ -1,11 +1,8 @@
 // Package xwing implements the hybrid quantum-resistant key encapsulation
 // method X-Wing, which combines X25519, ML-KEM-768, and SHA3-256 as specified
-// in [draft-connolly-cfrg-xwing-kem-04].
+// in [draft-connolly-cfrg-xwing-kem].
 //
-// Future v0 versions of this package might introduce backwards incompatible
-// changes to implement changes to draft-connolly-cfrg-xwing-kem.
-//
-// [draft-connolly-cfrg-xwing-kem-04]: https://www.ietf.org/archive/id/draft-connolly-cfrg-xwing-kem-04.html
+// [draft-connolly-cfrg-xwing-kem]: https://www.ietf.org/archive/id/draft-connolly-cfrg-xwing-kem-05.html
 package xwing
 
 import (
@@ -62,7 +59,7 @@ func NewKeyFromSeed(sk []byte) (*DecapsulationKey, error) {
 		return nil, errors.New("xwing: invalid seed length")
 	}
 
-	s := sha3.NewShake128()
+	s := sha3.NewShake256()
 	s.Write(sk)
 	expanded := make([]byte, mlkem768.SeedSize+32)
 	if _, err := s.Read(expanded); err != nil {
@@ -96,11 +93,11 @@ const xwingLabel = (`` +
 
 func combiner(ssM, ssX, ctX, pkX []byte) []byte {
 	h := sha3.New256()
-	h.Write([]byte(xwingLabel))
 	h.Write(ssM)
 	h.Write(ssX)
 	h.Write(ctX)
 	h.Write(pkX)
+	h.Write([]byte(xwingLabel))
 	return h.Sum(nil)
 }
 
