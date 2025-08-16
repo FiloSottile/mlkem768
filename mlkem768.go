@@ -7,10 +7,11 @@
 //
 // Only the recommended ML-KEM-768 parameter set is provided.
 //
+// Deprecated: this package is now just a wrapper around the standard library's
+// [crypto/mlkem] package, which provides the same functionality.
+//
 // [NIST FIPS 203]: https://doi.org/10.6028/NIST.FIPS.203
 package mlkem768
-
-// This implementation moved to the standard library as crypto/mlkem in Go 1.24.
 
 import "crypto/mlkem"
 

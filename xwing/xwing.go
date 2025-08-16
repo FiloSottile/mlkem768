@@ -2,7 +2,7 @@
 // method X-Wing, which combines X25519, ML-KEM-768, and SHA3-256 as specified
 // in [draft-connolly-cfrg-xwing-kem].
 //
-// [draft-connolly-cfrg-xwing-kem]: https://www.ietf.org/archive/id/draft-connolly-cfrg-xwing-kem-05.html
+// [draft-connolly-cfrg-xwing-kem]: https://www.ietf.org/archive/id/draft-connolly-cfrg-xwing-kem-07.html
 package xwing
 
 import (
