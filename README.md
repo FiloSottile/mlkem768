@@ -20,4 +20,5 @@ document.
 Reviewers unfamiliar with polynomials or linear algebra might find the
 background at https://words.filippo.io/kyber-math/ useful.
 
-This code is aimed at being upstreamed in the standard library.
+This code was upstreamed in the standard library in Go 1.24, and is now
+just a wrapper around the standard library's `crypto/mlkem` package.

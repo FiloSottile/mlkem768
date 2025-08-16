@@ -8,16 +8,15 @@ package xwing
 import (
 	"bytes"
 	"crypto/ecdh"
+	"crypto/mlkem"
 	"crypto/rand"
+	"crypto/sha3"
 	"errors"
-
-	"filippo.io/mlkem768"
-	"golang.org/x/crypto/sha3"
 )
 
 const (
-	CiphertextSize       = mlkem768.CiphertextSize + 32
-	EncapsulationKeySize = mlkem768.EncapsulationKeySize + 32
+	CiphertextSize       = mlkem.CiphertextSize768 + 32
+	EncapsulationKeySize = mlkem.EncapsulationKeySize768 + 32
 	SharedKeySize        = 32
 	SeedSize             = 32
 )
@@ -26,7 +25,7 @@ const (
 // ciphertext. It includes various precomputed values.
 type DecapsulationKey struct {
 	sk  [SeedSize]byte
-	skM *mlkem768.DecapsulationKey
+	skM *mlkem.DecapsulationKey768
 	skX *ecdh.PrivateKey
 	pk  [EncapsulationKeySize]byte
 }
@@ -59,20 +58,20 @@ func NewKeyFromSeed(sk []byte) (*DecapsulationKey, error) {
 		return nil, errors.New("xwing: invalid seed length")
 	}
 
-	s := sha3.NewShake256()
+	s := sha3.NewSHAKE256()
 	s.Write(sk)
-	expanded := make([]byte, mlkem768.SeedSize+32)
+	expanded := make([]byte, mlkem.SeedSize+32)
 	if _, err := s.Read(expanded); err != nil {
 		return nil, err
 	}
 
-	skM, err := mlkem768.NewKeyFromSeed(expanded[:mlkem768.SeedSize])
+	skM, err := mlkem.NewDecapsulationKey768(expanded[:mlkem.SeedSize])
 	if err != nil {
 		return nil, err
 	}
 	pkM := skM.EncapsulationKey()
 
-	skX := expanded[mlkem768.SeedSize:]
+	skX := expanded[mlkem.SeedSize:]
 	x, err := ecdh.X25519().NewPrivateKey(skX)
 	if err != nil {
 		return nil, err
@@ -83,7 +82,7 @@ func NewKeyFromSeed(sk []byte) (*DecapsulationKey, error) {
 	copy(dk.sk[:], sk)
 	dk.skM = skM
 	dk.skX = x
-	copy(dk.pk[:], append(pkM, pkX...))
+	copy(dk.pk[:], append(pkM.Bytes(), pkX...))
 	return dk, nil
 }
 
@@ -111,8 +110,8 @@ func Encapsulate(encapsulationKey []byte) (ciphertext, sharedKey []byte, err err
 		return nil, nil, errors.New("xwing: invalid encapsulation key size")
 	}
 
-	pkM := encapsulationKey[:mlkem768.EncapsulationKeySize]
-	pkX := encapsulationKey[mlkem768.EncapsulationKeySize:]
+	pkM := encapsulationKey[:mlkem.EncapsulationKeySize768]
+	pkX := encapsulationKey[mlkem.EncapsulationKeySize768:]
 
 	ephemeralKey, err := ecdh.X25519().GenerateKey(rand.Reader)
 	if err != nil {
@@ -128,10 +127,11 @@ func Encapsulate(encapsulationKey []byte) (ciphertext, sharedKey []byte, err err
 		return nil, nil, err
 	}
 
-	ctM, ssM, err := mlkem768.Encapsulate(pkM)
+	ek, err := mlkem.NewEncapsulationKey768(pkM)
 	if err != nil {
 		return nil, nil, err
 	}
+	ssM, ctM := ek.Encapsulate()
 
 	ss := combiner(ssM, ssX, ctX, pkX)
 	ct := append(ctM, ctX...)
@@ -147,11 +147,11 @@ func Decapsulate(dk *DecapsulationKey, ciphertext []byte) (sharedKey []byte, err
 		return nil, errors.New("xwing: invalid ciphertext length")
 	}
 
-	ctM := ciphertext[:mlkem768.CiphertextSize]
-	ctX := ciphertext[mlkem768.CiphertextSize:]
-	pkX := dk.pk[mlkem768.EncapsulationKeySize:]
+	ctM := ciphertext[:mlkem.CiphertextSize768]
+	ctX := ciphertext[mlkem.CiphertextSize768:]
+	pkX := dk.pk[mlkem.EncapsulationKeySize768:]
 
-	ssM, err := mlkem768.Decapsulate(dk.skM, ctM)
+	ssM, err := dk.skM.Decapsulate(ctM)
 	if err != nil {
 		return nil, err
 	}
