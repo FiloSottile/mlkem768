@@ -9,21 +9,9 @@ Only the recommended ML-KEM-768 parameter set is provided.
 
 [NIST FIPS 203]: https://doi.org/10.6028/NIST.FIPS.203
 
-This package targets security, correctness, simplicity, readability, and
-reviewability as its primary goals. All critical operations are performed in
-constant time.
-
-Variable and function names, as well as code layout, are selected to
-facilitate reviewing the implementation against the NIST FIPS 203
-document.
-
-Reviewers unfamiliar with polynomials or linear algebra might find the
-background at https://words.filippo.io/kyber-math/ useful.
-
-This code was upstreamed in the standard library in Go 1.24, and is now
-provided only for the additional `EncapsulateDerand` function. Users that don't
-need this function should use the standard library's `crypto/mlkem` package
-instead.
+This code was upstreamed in the standard library in Go 1.24, and as of Go 1.26
+it is just a wrapper for the `crypto/mlkem` and `crypto/mlkem/mlkemtest`
+packages.
 
 ## filippo.io/mlkem768/xwing
 
@@ -34,3 +22,6 @@ method X-Wing, which combines X25519, ML-KEM-768, and SHA3-256 as specified
 in [draft-connolly-cfrg-xwing-kem].
 
 [draft-connolly-cfrg-xwing-kem]: https://www.ietf.org/archive/id/draft-connolly-cfrg-xwing-kem-07.html
+
+Most users will probably be better served by the hybrid KEMs in the
+`crypto/hpke` package.

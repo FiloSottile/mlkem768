@@ -5,17 +5,12 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ["1.25", "1.26"]
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          fetch-depth: 0
-      - name: Install Go (from go.mod)
-        uses: actions/setup-go@v4
-        with:
-          go-version-file: go.mod
-          check-latest: true
-      - name: Run tests
-        run: go test ./...
-      - name: Run tests (short + race)
-        run: go test -short -race ./...
+          go-version: ${{ matrix.go-version }}
+      - run: go test ./...
